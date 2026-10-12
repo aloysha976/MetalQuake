@@ -25,6 +25,9 @@ Native Apple Metal port of QuakeSpasm for macOS. Tailored specifically for Apple
 - **Optical Bloom & PBR Materials:** Subtle physically-based surface reflections and atmospheric glow around torches, lava, and explosions.
 - **Smooth Model Interpolation (Lerp):** Upgrades the original 10 fps monster and weapon animations to fluid modern framerates.
 - **Apple Spatial 3D Audio:** Immersive positional audio powered natively by `AVAudioEngine`.
+- **No SDL Dependency:** Replaced legacy SDL layers with fully native macOS window management and input handling.
+- **Native Gamepad & Haptics Support:** Powered by GameController.framework with support for DualSense, Xbox, and MFi controllers, featuring rumble/haptics and hot-plugging. (not tested)
+- **Game Center Achievements Ready:** Built-in GameKit integration for native macOS achievements (implemented in codebase, toggled off until an active Apple Developer account is linked).
 - **Modern SwiftUI Launcher:** Native macOS settings center with Sandbox bookmark persistence, monitor resolution selection, aspect ratio controls, and diagnostics logging.
 
 ---
