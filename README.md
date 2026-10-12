@@ -1,7 +1,7 @@
 # MetalQuake
 
 <p align="center">
-  <img src="app_icon.png" alt="MetalQuake Icon" width="512" height="512">
+  <img src="app_icon.png" alt="MetalQuake Icon" width="256" height="256">
 </p>
 
 <p align="center">
