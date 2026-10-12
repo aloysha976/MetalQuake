@@ -1,0 +1,965 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3811281C3049E73800F1C128 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3811281B3049E73800F1C128 /* GameController.framework */; };
+		381129EB3049F49400F1C128 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 381129EA3049F49400F1C128 /* CoreHaptics.framework */; };
+		38D1583A3034CA7F0071CC8E /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 38D158393034CA7F0071CC8E /* AppIcon.icon */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		38D897733027C714003DBE9D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 38D8975D3027C713003DBE9D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 38D897643027C713003DBE9D;
+			remoteInfo = MetalQuake;
+		};
+		38D8977D3027C714003DBE9D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 38D8975D3027C713003DBE9D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 38D897643027C713003DBE9D;
+			remoteInfo = MetalQuake;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		3811281B3049E73800F1C128 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		381129EA3049F49400F1C128 /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
+		38D158393034CA7F0071CC8E /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		38D897653027C713003DBE9D /* MetalQuake.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MetalQuake.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		38D897723027C714003DBE9D /* MetalQuakeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MetalQuakeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		38D8977C3027C714003DBE9D /* MetalQuakeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MetalQuakeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		38D899C13027C961003DBE9D /* Exceptions for "QuakeCore" folder in "MetalQuake" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			additionalCompilerFlagsByRelativePath = {
+				pl_osx.m = "-fno-objc-arc";
+			};
+			membershipExceptions = (
+				bgmusic.c,
+				cd_null.c,
+				cfgfile.c,
+				chase.c,
+				cl_demo.c,
+				cl_input.c,
+				cl_main.c,
+				cl_parse.c,
+				cl_tent.c,
+				cmd.c,
+				common.c,
+				console.c,
+				crc.c,
+				cvar.c,
+				detect.sh,
+				gl_draw.c,
+				gl_fog.c,
+				gl_mesh.c,
+				gl_model.c,
+				gl_refrag.c,
+				gl_rlight.c,
+				gl_rmain.c,
+				gl_rmisc.c,
+				gl_screen.c,
+				gl_sky.c,
+				gl_texmgr.c,
+				gl_warp.c,
+				host_cmd.c,
+				host.c,
+				image.c,
+				in_macos.m,
+				keys.c,
+				main_macos.m,
+				Makefile.darwin,
+				Makefile.emscripten,
+				Makefile.w32,
+				Makefile.w64,
+				Makefile.wat,
+				mathlib.c,
+				menu.c,
+				miniz.c,
+				net_bsd.c,
+				net_dgrm.c,
+				net_loop.c,
+				net_main.c,
+				net_udp.c,
+				pl_osx.m,
+				pr_cmds.c,
+				pr_edict.c,
+				pr_exec.c,
+				progdefs.q1,
+				quakespasm.pak,
+				r_alias.c,
+				r_brush.c,
+				r_part.c,
+				r_sprite.c,
+				r_world.c,
+				sbar.c,
+				snd_avcore.m,
+				snd_codec.c,
+				snd_dma.c,
+				snd_flac.c,
+				snd_mem.c,
+				snd_mikmod.c,
+				snd_mix.c,
+				snd_modplug.c,
+				snd_mp3.c,
+				snd_mp3tag.c,
+				snd_mpg123.c,
+				snd_opus.c,
+				snd_umx.c,
+				snd_vorbis.c,
+				snd_wave.c,
+				snd_xmp.c,
+				strlcat.c,
+				strlcpy.c,
+				sv_main.c,
+				sv_move.c,
+				sv_phys.c,
+				sv_user.c,
+				sys_macos.c,
+				vid_macos.m,
+				view.c,
+				wad.c,
+				world.c,
+				zone.c,
+			);
+			target = 38D897643027C713003DBE9D /* MetalQuake */;
+		};
+		38D899C23027C961003DBE9D /* Exceptions for "QuakeCore" folder in "MetalQuakeUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				bgmusic.c,
+				cd_null.c,
+				cd_sdl.c,
+				cfgfile.c,
+				chase.c,
+				cl_demo.c,
+				cl_input.c,
+				cl_main.c,
+				cl_parse.c,
+				cl_tent.c,
+				cmd.c,
+				common.c,
+				console.c,
+				crc.c,
+				cvar.c,
+				detect.sh,
+				gl_draw.c,
+				gl_fog.c,
+				gl_mesh.c,
+				gl_model.c,
+				gl_refrag.c,
+				gl_rlight.c,
+				gl_rmain.c,
+				gl_rmisc.c,
+				gl_screen.c,
+				gl_sky.c,
+				gl_texmgr.c,
+				gl_vidsdl.c,
+				gl_warp.c,
+				host_cmd.c,
+				host.c,
+				image.c,
+				in_macos.m,
+				in_sdl.c,
+				keys.c,
+				lodepng.c,
+				main_macos.m,
+				main_sdl.c,
+				Makefile,
+				Makefile.darwin,
+				Makefile.emscripten,
+				Makefile.w32,
+				Makefile.w64,
+				Makefile.wat,
+				mathlib.c,
+				menu.c,
+				miniz.c,
+				net_bsd.c,
+				net_dgrm.c,
+				net_loop.c,
+				net_main.c,
+				net_udp.c,
+				net_win.c,
+				net_wins.c,
+				net_wipx.c,
+				pl_linux.c,
+				pl_osx.m,
+				pl_win.c,
+				pr_cmds.c,
+				pr_edict.c,
+				pr_exec.c,
+				progdefs.q1,
+				quakespasm.pak,
+				r_alias.c,
+				r_brush.c,
+				r_part.c,
+				r_sprite.c,
+				r_world.c,
+				sbar.c,
+				snd_avcore.m,
+				snd_codec.c,
+				snd_dma.c,
+				snd_flac.c,
+				snd_mem.c,
+				snd_mikmod.c,
+				snd_mix.c,
+				snd_modplug.c,
+				snd_mp3.c,
+				snd_mp3tag.c,
+				snd_mpg123.c,
+				snd_opus.c,
+				snd_sdl.c,
+				snd_umx.c,
+				snd_vorbis.c,
+				snd_wave.c,
+				snd_xmp.c,
+				strlcat.c,
+				strlcpy.c,
+				sv_main.c,
+				sv_move.c,
+				sv_phys.c,
+				sv_user.c,
+				sys_macos.c,
+				sys_sdl_unix.c,
+				sys_sdl_win.c,
+				vid_macos.m,
+				view.c,
+				wad.c,
+				world.c,
+				zone.c,
+			);
+			target = 38D8977B3027C714003DBE9D /* MetalQuakeUITests */;
+		};
+		38D899CF3027CDB5003DBE9D /* Exceptions for "MetalEngine" folder in "MetalQuake" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				gc_achievements.m,
+				in_gamecontroller.m,
+				mq_context.m,
+				mq_encoder_state.m,
+				mq_frame_textures.m,
+				mq_hdr_edr.m,
+				mq_log.c,
+				mq_metalfx.m,
+				mq_pbr.m,
+				mq_pipelines.m,
+				mq_renderer.m,
+				mq_rt.m,
+				mq_textures_api.m,
+				mq_ui2d.m,
+				mq_uniform_buffer.m,
+				mq_vertex_buffer.m,
+				mq_window_macos.m,
+				mq_world_vbo.m,
+				mq_world3d.m,
+				RTShaders.metal,
+				Shaders.metal,
+			);
+			target = 38D897643027C713003DBE9D /* MetalQuake */;
+		};
+		38D899D33027D09D003DBE9D /* Exceptions for "LauncherUI" folder in "MetalQuakeUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				DpQuake.ttf,
+				LauncherEngine.swift,
+				LauncherModels.swift,
+				MetalQuakeLauncher.swift,
+			);
+			target = 38D8977B3027C714003DBE9D /* MetalQuakeUITests */;
+		};
+		38D899D53027D0A0003DBE9D /* Exceptions for "LauncherUI" folder in "MetalQuake" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				DpQuake.ttf,
+				LauncherEngine.swift,
+				LauncherModels.swift,
+				MetalQuakeLauncher.swift,
+			);
+			target = 38D897643027C713003DBE9D /* MetalQuake */;
+		};
+		38D899D63027D1A5003DBE9D /* Exceptions for "MetalEngine" folder in "MetalQuakeUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				gc_achievements_stub.c,
+				gc_achievements.m,
+				in_gamecontroller.m,
+				mq_context.m,
+				mq_encoder_state.m,
+				mq_frame_textures.m,
+				mq_hdr_edr.m,
+				mq_log.c,
+				mq_metalfx.m,
+				mq_pbr.m,
+				mq_pipelines.m,
+				mq_renderer.m,
+				mq_rt.m,
+				mq_textures_api.m,
+				mq_ui2d.m,
+				mq_uniform_buffer.m,
+				mq_vertex_buffer.m,
+				mq_window_macos.m,
+				mq_world_vbo.m,
+				mq_world3d.m,
+				RTShaders.metal,
+				Shaders.metal,
+			);
+			target = 38D8977B3027C714003DBE9D /* MetalQuakeUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		38D897673027C713003DBE9D /* MetalQuake */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MetalQuake;
+			sourceTree = "<group>";
+		};
+		38D897753027C714003DBE9D /* MetalQuakeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MetalQuakeTests;
+			sourceTree = "<group>";
+		};
+		38D8977F3027C714003DBE9D /* MetalQuakeUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MetalQuakeUITests;
+			sourceTree = "<group>";
+		};
+		38D899593027C960003DBE9D /* QuakeCore */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				38D899C13027C961003DBE9D /* Exceptions for "QuakeCore" folder in "MetalQuake" target */,
+				38D899C23027C961003DBE9D /* Exceptions for "QuakeCore" folder in "MetalQuakeUITests" target */,
+			);
+			path = QuakeCore;
+			sourceTree = "<group>";
+		};
+		38D899C83027CC6F003DBE9D /* MetalEngine */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				38D899CF3027CDB5003DBE9D /* Exceptions for "MetalEngine" folder in "MetalQuake" target */,
+				38D899D63027D1A5003DBE9D /* Exceptions for "MetalEngine" folder in "MetalQuakeUITests" target */,
+			);
+			path = MetalEngine;
+			sourceTree = "<group>";
+		};
+		38D899C93027CC79003DBE9D /* LauncherUI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				38D899D53027D0A0003DBE9D /* Exceptions for "LauncherUI" folder in "MetalQuake" target */,
+				38D899D33027D09D003DBE9D /* Exceptions for "LauncherUI" folder in "MetalQuakeUITests" target */,
+			);
+			path = LauncherUI;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		38D897623027C713003DBE9D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				381129EB3049F49400F1C128 /* CoreHaptics.framework in Frameworks */,
+				3811281C3049E73800F1C128 /* GameController.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D8976F3027C714003DBE9D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D897793027C714003DBE9D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3811281A3049E73800F1C128 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				381129EA3049F49400F1C128 /* CoreHaptics.framework */,
+				3811281B3049E73800F1C128 /* GameController.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		38D8975C3027C713003DBE9D = {
+			isa = PBXGroup;
+			children = (
+				38D899C93027CC79003DBE9D /* LauncherUI */,
+				38D899C83027CC6F003DBE9D /* MetalEngine */,
+				38D897673027C713003DBE9D /* MetalQuake */,
+				38D897753027C714003DBE9D /* MetalQuakeTests */,
+				38D8977F3027C714003DBE9D /* MetalQuakeUITests */,
+				38D897663027C713003DBE9D /* Products */,
+				38D899593027C960003DBE9D /* QuakeCore */,
+				38D158393034CA7F0071CC8E /* AppIcon.icon */,
+				3811281A3049E73800F1C128 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		38D897663027C713003DBE9D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				38D897653027C713003DBE9D /* MetalQuake.app */,
+				38D897723027C714003DBE9D /* MetalQuakeTests.xctest */,
+				38D8977C3027C714003DBE9D /* MetalQuakeUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		38D897643027C713003DBE9D /* MetalQuake */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38D897863027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuake" */;
+			buildPhases = (
+				38D897613027C713003DBE9D /* Sources */,
+				38D897623027C713003DBE9D /* Frameworks */,
+				38D897633027C713003DBE9D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				38D897673027C713003DBE9D /* MetalQuake */,
+			);
+			name = MetalQuake;
+			packageProductDependencies = (
+			);
+			productName = MetalQuake;
+			productReference = 38D897653027C713003DBE9D /* MetalQuake.app */;
+			productType = "com.apple.product-type.application";
+		};
+		38D897713027C714003DBE9D /* MetalQuakeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38D897893027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuakeTests" */;
+			buildPhases = (
+				38D8976E3027C714003DBE9D /* Sources */,
+				38D8976F3027C714003DBE9D /* Frameworks */,
+				38D897703027C714003DBE9D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				38D897743027C714003DBE9D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				38D897753027C714003DBE9D /* MetalQuakeTests */,
+			);
+			name = MetalQuakeTests;
+			packageProductDependencies = (
+			);
+			productName = MetalQuakeTests;
+			productReference = 38D897723027C714003DBE9D /* MetalQuakeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		38D8977B3027C714003DBE9D /* MetalQuakeUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38D8978C3027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuakeUITests" */;
+			buildPhases = (
+				38D897783027C714003DBE9D /* Sources */,
+				38D897793027C714003DBE9D /* Frameworks */,
+				38D8977A3027C714003DBE9D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				38D8977E3027C714003DBE9D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				38D8977F3027C714003DBE9D /* MetalQuakeUITests */,
+				38D899593027C960003DBE9D /* QuakeCore */,
+				38D899C83027CC6F003DBE9D /* MetalEngine */,
+				38D899C93027CC79003DBE9D /* LauncherUI */,
+			);
+			name = MetalQuakeUITests;
+			packageProductDependencies = (
+			);
+			productName = MetalQuakeUITests;
+			productReference = 38D8977C3027C714003DBE9D /* MetalQuakeUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		38D8975D3027C713003DBE9D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					38D897643027C713003DBE9D = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					38D897713027C714003DBE9D = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 38D897643027C713003DBE9D;
+					};
+					38D8977B3027C714003DBE9D = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 38D897643027C713003DBE9D;
+					};
+				};
+			};
+			buildConfigurationList = 38D897603027C713003DBE9D /* Build configuration list for PBXProject "MetalQuake" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 38D8975C3027C713003DBE9D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 38D897663027C713003DBE9D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				38D897643027C713003DBE9D /* MetalQuake */,
+				38D897713027C714003DBE9D /* MetalQuakeTests */,
+				38D8977B3027C714003DBE9D /* MetalQuakeUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		38D897633027C713003DBE9D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				38D1583A3034CA7F0071CC8E /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D897703027C714003DBE9D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D8977A3027C714003DBE9D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		38D897613027C713003DBE9D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D8976E3027C714003DBE9D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D897783027C714003DBE9D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		38D897743027C714003DBE9D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 38D897643027C713003DBE9D /* MetalQuake */;
+			targetProxy = 38D897733027C714003DBE9D /* PBXContainerItemProxy */;
+		};
+		38D8977E3027C714003DBE9D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 38D897643027C713003DBE9D /* MetalQuake */;
+			targetProxy = 38D8977D3027C714003DBE9D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		38D897843027C714003DBE9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		38D897853027C714003DBE9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		38D897873027C714003DBE9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = MetalQuake.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				GCC_NO_COMMON_BLOCKS = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					QUAKESPASM,
+					"MQ_NO_SDL=1",
+					"GL_SILENCE_DEPRECATION=1",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/MetalQuake/QuakeCore/**";
+				INFOPLIST_KEY_CFBundleDisplayName = MetalQuake;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.action-games";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "/opt/homebrew/lib/**";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.9;
+				OTHER_LDFLAGS = (
+					"-framework",
+					GameKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuake;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MetalQuake/MetalQuake-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		38D897883027C714003DBE9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = MetalQuake.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				GCC_NO_COMMON_BLOCKS = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					QUAKESPASM,
+					"MQ_NO_SDL=1",
+					"GL_SILENCE_DEPRECATION=1",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/MetalQuake/QuakeCore/**";
+				INFOPLIST_KEY_CFBundleDisplayName = MetalQuake;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.action-games";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "/opt/homebrew/lib/**";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.9;
+				OTHER_LDFLAGS = (
+					"-framework",
+					GameKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuake;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MetalQuake/MetalQuake-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		38D8978A3027C714003DBE9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuakeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MetalQuake.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MetalQuake";
+			};
+			name = Debug;
+		};
+		38D8978B3027C714003DBE9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuakeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MetalQuake.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MetalQuake";
+			};
+			name = Release;
+		};
+		38D8978D3027C714003DBE9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuakeUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = MetalQuake;
+			};
+			name = Debug;
+		};
+		38D8978E3027C714003DBE9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexeychernyak.MetalQuakeUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = MetalQuake;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		38D897603027C713003DBE9D /* Build configuration list for PBXProject "MetalQuake" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38D897843027C714003DBE9D /* Debug */,
+				38D897853027C714003DBE9D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		38D897863027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuake" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38D897873027C714003DBE9D /* Debug */,
+				38D897883027C714003DBE9D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		38D897893027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuakeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38D8978A3027C714003DBE9D /* Debug */,
+				38D8978B3027C714003DBE9D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		38D8978C3027C714003DBE9D /* Build configuration list for PBXNativeTarget "MetalQuakeUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38D8978D3027C714003DBE9D /* Debug */,
+				38D8978E3027C714003DBE9D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 38D8975D3027C713003DBE9D /* Project object */;
+}
