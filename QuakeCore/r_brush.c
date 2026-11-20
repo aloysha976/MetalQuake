@@ -241,17 +241,18 @@ void R_DrawBrushModel (entity_t *e)
     // to prevent z-fighting as in standard QuakeSpasm.
     vec3_t bmodel_origin;
     VectorCopy (e->origin, bmodel_origin);
-    if (gl_zfix.value)
-    {
-        bmodel_origin[0] -= DIST_EPSILON;
-        bmodel_origin[1] -= DIST_EPSILON;
-        bmodel_origin[2] -= DIST_EPSILON;
-    }
+    // Turned off as bugfix
+    //    if (gl_zfix.value)
+    //    {
+    //        bmodel_origin[0] -= DIST_EPSILON;
+    //        bmodel_origin[1] -= DIST_EPSILON;
+    //        bmodel_origin[2] -= DIST_EPSILON;
+    //    }
     simd_float4x4 entityMVP = simd_mul(g_metalWorldMVP,
                                        R_BrushEntityMatrix(bmodel_origin, e->angles, ENTSCALE_DECODE(e->scale)));
     
     // Disable per-pixel dlights for brush models to account for model-space coordinates
-    R_Metal_EnablePerPixelDlights (false);
+    //    R_Metal_EnablePerPixelDlights (false);
     
     R_ClearTextureChains (clmodel, chain_model);
     for (i=0 ; i<clmodel->nummodelsurfaces ; i++, psurf++)
@@ -267,9 +268,17 @@ void R_DrawBrushModel (entity_t *e)
         }
     }
     
+    // Resolve Z-fighting on coplanar open doors (e.g. E4M5).
+    // Applying a depth bias ensures the bmodel cleanly wins depth tests
+    // over coincident world geometry without distorting 3D vertex coordinates.
+    extern void R_Metal_SetPolygonOffset (int offset);
+    R_Metal_SetPolygonOffset (-1);
+    
     // Render brush model texture chains using entity transform matrix
     R_DrawTextureChains (clmodel, e, chain_model, entityMVP);
     R_DrawTextureChains_Water (clmodel, e, chain_model, entityMVP);
+    
+    R_Metal_SetPolygonOffset (0);
     
     // Restore per-pixel dynamic lights for subsequent world draws
     R_Metal_EnablePerPixelDlights (true);
@@ -633,6 +642,15 @@ void GL_BuildLightmaps (void)
     
     // Bake static world geometry into VBO and generate acceleration structures
     MQ_WorldVBO_Build (cl.worldmodel);
+    
+    // Initial upload of all lightmap pages into the unified 2D Texture Array
+    for (i = 0; i < lightmap_count; i++)
+    {
+        MQ_WorldLightmapArray_UpdateSlice((uint32_t)i, 0, 0,
+                                          LMBLOCK_WIDTH, LMBLOCK_HEIGHT,
+                                          lightmaps[i].data,
+                                          LMBLOCK_WIDTH * lightmap_bytes);
+    }
 }
 
 /*
@@ -938,6 +956,14 @@ static void R_UploadLightmap(int lmap)
                                     LMBLOCK_WIDTH, lm->rectchange.h,
                                     lm->data + lm->rectchange.t * LMBLOCK_WIDTH * lightmap_bytes,
                                     LMBLOCK_WIDTH * lightmap_bytes);
+        
+        // Mirror dirty row updates into the unified 2D texture array slice
+        MQ_WorldLightmapArray_UpdateSlice((uint32_t)lmap,
+                                          0, (uint32_t)lm->rectchange.t,
+                                          LMBLOCK_WIDTH, (uint32_t)lm->rectchange.h,
+                                          lm->data + lm->rectchange.t * LMBLOCK_WIDTH * lightmap_bytes,
+                                          LMBLOCK_WIDTH * lightmap_bytes);
+        
         s_eRegionsUploaded++;
         rs_dynamiclightmaps++;
     }
@@ -1006,6 +1032,12 @@ void R_RebuildAllLightmaps (void)
             R_Metal_UpdateTextureRegion (lightmaps[i].texture->metalTexture,
                                          0, 0, LMBLOCK_WIDTH, LMBLOCK_HEIGHT,
                                          lightmaps[i].data, LMBLOCK_WIDTH * lightmap_bytes);
+        
+        MQ_WorldLightmapArray_UpdateSlice((uint32_t)i,
+                                          0, 0,
+                                          LMBLOCK_WIDTH, LMBLOCK_HEIGHT,
+                                          lightmaps[i].data,
+                                          LMBLOCK_WIDTH * lightmap_bytes);
     }
 }
 

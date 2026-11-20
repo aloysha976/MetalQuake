@@ -175,4 +175,7 @@ void R_Metal_SetUITargetScale(float sx, float sy);
 void R_Metal_RebuildBlended3DPipelines(MTLPixelFormat fmt);
 extern bool g_metalGunDepth; // Compressed weapon depth range state
 
+// Fallback 1x1 black texture for unlit/glow-less passes
+id<MTLTexture> R_Metal_GetBlackTexture(void);
+
 #endif /* mq_internal_h */

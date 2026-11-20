@@ -510,33 +510,56 @@ final class LauncherEngine: ObservableObject {
         let metalFXArg = config.metalFXMode == MetalFXMode.disabled.rawValue ? "0" :
         (config.metalFXMode == MetalFXMode.temporal.rawValue ? "2" : "1")
         
+        // Определяем частоту обновления активного монитора (для ProMotion — 120 Гц, для обычных — 60 Гц)
+        let screenMaxHz: Int = {
+            let screens = NSScreen.screens
+            if config.selectedDisplayIndex < screens.count {
+                let screen = screens[config.selectedDisplayIndex]
+                let maxHz = screen.maximumFramesPerSecond
+                return maxHz > 0 ? maxHz : 60
+            }
+            return 120
+        }()
+        
+        // При включенном VSync выставляем host_maxfps равным герцовке экрана, исключая холостой ход CPU
+        let resolvedFPS: String
+        if config.vsync {
+            resolvedFPS = "\(screenMaxHz)"
+        } else if config.uncappedFPS {
+            resolvedFPS = "0"
+        } else {
+            resolvedFPS = "\(Int(config.targetFPS))"
+        }
+        
+        // Передаем параметры через прямой синтаксис Quake "+<cvar> <value>".
+        // Это гарантирует, что stuffcmds применит их ПОСЛЕ config.cfg, перезаписав любые старые консольные значения.
         args.append(contentsOf: [
-            "+set", "gl_texture_anisotropy", "\(config.anisotropy)",
-            "+set", "r_lerpmodels", config.lerpModels ? "1" : "0",
-            "+set", "r_shadows", config.dynamicShadows ? "1" : "0",
-            "+set", "r_pbr", config.pbrEnabled ? "1" : "0",
-            "+set", "r_rt", (config.rtEnabled && fxCaps.isHardwareRayTracingSupported) ? "1" : "0",
-            "+set", "fov", "\(Int(config.fieldOfView))",
-            "+set", "skill", "\(config.skillLevel)",
-            "+set", "vid_vsync", config.vsync ? "1" : "0",
-            "+set", "vid_preserve_aspect", config.preserveAspect ? "1" : "0",
-            "+set", "vid_scale_filter", "\(config.scaleFilter)",
-            "+set", "host_maxfps", config.vsync ? "0" : (config.uncappedFPS ? "0" : "\(Int(config.targetFPS))"),
-            "+set", "metalfx_mode", metalFXArg,
-            "+set", "metalfx_scale", String(format: "%.2f", metalFXScale),
-            "+set", "r_hdr", config.hdrEnabled || config.metalFXMode != MetalFXMode.disabled.rawValue ? "1" : "0",
-            "+set", "r_bloom", config.bloomEnabled && config.hdrEnabled ? "1" : "0",
-            "+set", "r_mq_bloom_quality", "\(config.bloomQuality)",
-            "+set", "vid_fsaa", "\(config.msaaSamples)",
-            "+set", "s_backend", config.enableSpatialAudio ? "av" : "sdl",
-            "+set", "freelook", config.freelook ? "1" : "0",
-            "+set", "crosshair", config.crosshairEnabled ? "1" : "0",
-            "+set", "scr_sbarscale", "0",
-            "+set", "scr_menuscale", "0",
-            "+set", "scr_conscale", "0",
-            "+set", "scr_crosshairscale", "0",
-            "+set", "gamma", String(format: "%.2f", config.gammaValue),
-            "+set", "contrast", String(format: "%.2f", config.contrastValue)
+            "+gl_texture_anisotropy", "\(config.anisotropy)",
+            "+r_lerpmodels", config.lerpModels ? "1" : "0",
+            "+r_shadows", config.dynamicShadows ? "1" : "0",
+            "+r_pbr", config.pbrEnabled ? "1" : "0",
+            "+r_rt", (config.rtEnabled && fxCaps.isHardwareRayTracingSupported) ? "1" : "0",
+            "+fov", "\(Int(config.fieldOfView))",
+            "+skill", "\(config.skillLevel)",
+            "+vid_vsync", config.vsync ? "1" : "0",
+            "+vid_preserve_aspect", config.preserveAspect ? "1" : "0",
+            "+vid_scale_filter", "\(config.scaleFilter)",
+            "+host_maxfps", resolvedFPS,
+            "+metalfx_mode", metalFXArg,
+            "+metalfx_scale", String(format: "%.2f", metalFXScale),
+            "+r_hdr", config.hdrEnabled || config.metalFXMode != MetalFXMode.disabled.rawValue ? "1" : "0",
+            "+r_bloom", config.bloomEnabled && config.hdrEnabled ? "1" : "0",
+            "+r_mq_bloom_quality", "\(config.bloomQuality)",
+            "+vid_fsaa", "\(config.msaaSamples)",
+            "+s_backend", config.enableSpatialAudio ? "av" : "sdl",
+            "+freelook", config.freelook ? "1" : "0",
+            "+crosshair", config.crosshairEnabled ? "1" : "0",
+            "+scr_sbarscale", "0",
+            "+scr_menuscale", "0",
+            "+scr_conscale", "0",
+            "+scr_crosshairscale", "0",
+            "+gamma", String(format: "%.2f", config.gammaValue),
+            "+contrast", String(format: "%.2f", config.contrastValue)
         ])
         
         if !config.startMap.isEmpty {

@@ -514,21 +514,21 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, int bpp, qb
     modeSwitchFS = false;
     
     // ---------- Геометрия окна ----------
-        if (fullscreen)
-        {
-            MQVid_MakeWindow(caption, dispBounds, NSWindowStyleMaskBorderless);
-            [mq_window setFrame:dispBounds display:YES];
-            MQVid_ApplyLayerScale(pixW, pixH, dispBounds.size.width, dispBounds.size.height);
-            s_curW = (int)pixW;
-            s_curH = (int)pixH;
-
-            // Поднимаем окно выше уровня строки меню (NSMainMenuWindowLevel + 1)
-            [mq_window setLevel:NSMainMenuWindowLevel + 1];
-            [NSApp setPresentationOptions:NSApplicationPresentationHideMenuBar |
-                          NSApplicationPresentationHideDock];
-            Cvar_SetValueQuick (&vid_fullscreen, 1.0f);
-            modestate = MS_FULLSCREEN;
-        }
+    if (fullscreen)
+    {
+        MQVid_MakeWindow(caption, dispBounds, NSWindowStyleMaskBorderless);
+        [mq_window setFrame:dispBounds display:YES];
+        MQVid_ApplyLayerScale(pixW, pixH, dispBounds.size.width, dispBounds.size.height);
+        s_curW = (int)pixW;
+        s_curH = (int)pixH;
+        
+        // Поднимаем окно выше уровня строки меню (NSMainMenuWindowLevel + 1)
+        [mq_window setLevel:NSMainMenuWindowLevel + 1];
+        [NSApp setPresentationOptions:NSApplicationPresentationHideMenuBar |
+         NSApplicationPresentationHideDock];
+        Cvar_SetValueQuick (&vid_fullscreen, 1.0f);
+        modestate = MS_FULLSCREEN;
+    }
     else
     {
         // [FIX MQ-MENUBAR] возврат системного UI в оконном режиме
@@ -711,32 +711,32 @@ qboolean VID_IsMinimized (void)
 }
 
 /*
-================
-VID_ValidMode_Unchecked — [MQ-STAGE6] Любой Render Target от 320x200 до 16K валиден
-================
-*/
+ ================
+ VID_ValidMode_Unchecked — [MQ-STAGE6] Любой Render Target от 320x200 до 16K валиден
+ ================
+ */
 static qboolean VID_ValidMode_Unchecked (int width, int height, int refreshrate, int bpp, qboolean fullscreen)
 {
     (void)refreshrate;
     (void)fullscreen;
-
+    
     // Проверяем только границы допустимых текстур Metal
     if (width < 320 || height < 200)
         return false;
-
+    
     if (width > METAL_MAX_TEXTURE_EDGE || height > METAL_MAX_TEXTURE_EDGE)
         return false;
-
+    
     switch (bpp)
     {
-    case 16:
-    case 24:
-    case 32:
-        break;
-    default:
-        return false;
+        case 16:
+        case 24:
+        case 32:
+            break;
+        default:
+            return false;
     }
-
+    
     return true;
 }
 
@@ -1091,26 +1091,28 @@ void VID_WindowDidChangeScreen(void)
     if (![screenNum isKindOfClass:[NSNumber class]]) return;
     CGDirectDisplayID newDisplayID = (CGDirectDisplayID)[screenNum unsignedIntValue];
     
-    // 1. Дисплей не изменился, но могли измениться параметры (например, в Системных настройках)
+    // 1. Дисплей не изменился
     if (newDisplayID == mq_display) {
-        if (modestate == MS_WINDOWED && mq_layer) {
-            CGFloat newScale = newScr.backingScaleFactor;
-            if (newScale > 0 && mq_layer.contentsScale != newScale) {
-                mq_layer.contentsScale = newScale;
-                MLog(MQ_LVL_DEV, "VID", "same display, backingScaleFactor updated to %.1f", newScale);
-            }
+        if (modestate == MS_FULLSCREEN) {
+            // В полноэкранном режиме проверяем фактическое изменение границ экрана
+            if (NSEqualRects(mq_window.frame, newScr.frame))
+                return;
+        } else {
+            // В оконном режиме расчет масштаба делегирован R_Metal_HandleWindowResize
+            return;
         }
-        return;
     }
     
     MLog(MQ_LVL_ALWAYS, "VID", "window moved to new display: %u -> %u", (unsigned)mq_display, (unsigned)newDisplayID);
     mq_display = newDisplayID;
-    VID_InitModelist(); // Перечитываем режимы для нового дисплея
+    VID_InitModelist();
     
-    // 2. Адаптация под текущий тип полноэкранного режима
+    // 2. Адаптация геометрии
     if (modestate == MS_FULLSCREEN) {
         NSRect newBounds = newScr.frame;
-        [mq_window setFrame:newBounds display:YES];
+        if (!NSEqualRects(mq_window.frame, newBounds)) {
+            [mq_window setFrame:newBounds display:NO];
+        }
         
         size_t pixW, pixH;
         MQVid_GetTruePhysicalSize(mq_display, &pixW, &pixH);
@@ -1119,13 +1121,6 @@ void VID_WindowDidChangeScreen(void)
         s_curW = (int)pixW;
         s_curH = (int)pixH;
         MLog(MQ_LVL_DEV, "VID", "Desktop-FS adapted to new screen %zux%zu", pixW, pixH);
-    }
-    else if (modestate == MS_WINDOWED) {
-        // --- Оконный режим ---
-        // Просто обновляем масштаб, если экран Retina/Non-Retina
-        CGFloat newScale = newScr.backingScaleFactor;
-        if (newScale <= 0) newScale = 1.0;
-        mq_layer.contentsScale = newScale;
     }
 }
 
@@ -1148,9 +1143,9 @@ void	VID_Init (void)
         "vid_fsaa",
         "vid_desktopfullscreen",
         "vid_borderless",
-                             "vid_fullscreen_style",
-                             "vid_preserve_aspect",
-                             "vid_scale_filter"};
+        "vid_fullscreen_style",
+        "vid_preserve_aspect",
+        "vid_scale_filter"};
 #define num_readvars	Q_COUNTOF(read_vars)
     
     Cvar_RegisterVariable (&vid_fullscreen);
@@ -1163,8 +1158,8 @@ void	VID_Init (void)
     Cvar_RegisterVariable (&vid_desktopfullscreen);
     Cvar_RegisterVariable (&vid_borderless);
     Cvar_RegisterVariable (&vid_fullscreen_style);
-        Cvar_RegisterVariable (&vid_preserve_aspect);
-        Cvar_RegisterVariable (&vid_scale_filter);
+    Cvar_RegisterVariable (&vid_preserve_aspect);
+    Cvar_RegisterVariable (&vid_scale_filter);
     Cvar_SetCallback (&vid_fullscreen, VID_Changed_f);
     Cvar_SetCallback (&vid_width, VID_Changed_f);
     Cvar_SetCallback (&vid_height, VID_Changed_f);
@@ -1267,15 +1262,15 @@ void	VID_Init (void)
             bpp = Q_atoi(com_argv[p+1]);
         
         if (COM_CheckParm("-window") || COM_CheckParm("-w"))
-                {
-                    fullscreen = false;
-                    Cvar_SetValueQuick (&vid_fullscreen, 0.0f);
-                }
-                else if (COM_CheckParm("-fullscreen") || COM_CheckParm("-f"))
-                {
-                    fullscreen = true;
-                    Cvar_SetValueQuick (&vid_fullscreen, 1.0f);
-                }
+        {
+            fullscreen = false;
+            Cvar_SetValueQuick (&vid_fullscreen, 0.0f);
+        }
+        else if (COM_CheckParm("-fullscreen") || COM_CheckParm("-f"))
+        {
+            fullscreen = true;
+            Cvar_SetValueQuick (&vid_fullscreen, 1.0f);
+        }
     }
     
     p = COM_CheckParm ("-fsaa");
@@ -1283,23 +1278,23 @@ void	VID_Init (void)
         fsaa = atoi(com_argv[p+1]);
     
     // [MQ-STAGE3] Сохраняем запрошенное разрешение для Metal-рендерера
-        if (fullscreen)
+    if (fullscreen)
+    {
+        qboolean customRes = COM_CheckParm("-width") || COM_CheckParm("-height");
+        if (!customRes)
         {
-            qboolean customRes = COM_CheckParm("-width") || COM_CheckParm("-height");
-            if (!customRes)
-            {
-                width = display_width;
-                height = display_height;
-            }
-            refreshrate = display_refreshrate;
-            g_reqRenderWidth = width;
-            g_reqRenderHeight = height;
-            Cvar_SetValueQuick (&vid_width, (float)width);
-            Cvar_SetValueQuick (&vid_height, (float)height);
-            MLog(MQ_LVL_ALWAYS, "VID",
-                 "STAGE3: Render Target = %dx%d (Display Panel = %dx%d@%d)",
-                 width, height, display_width, display_height, refreshrate);
+            width = display_width;
+            height = display_height;
         }
+        refreshrate = display_refreshrate;
+        g_reqRenderWidth = width;
+        g_reqRenderHeight = height;
+        Cvar_SetValueQuick (&vid_width, (float)width);
+        Cvar_SetValueQuick (&vid_height, (float)height);
+        MLog(MQ_LVL_ALWAYS, "VID",
+             "STAGE3: Render Target = %dx%d (Display Panel = %dx%d@%d)",
+             width, height, display_width, display_height, refreshrate);
+    }
     
     if (!VID_ValidMode(width, height, refreshrate, bpp, fullscreen))
     {

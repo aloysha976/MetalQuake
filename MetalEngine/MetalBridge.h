@@ -48,6 +48,7 @@ typedef struct {
     int           useTexture;
     int           useFullbright;
     int           useGlow;        // 1 = additive fullbright mask bound to slot 1
+    int           isEDR;          // 1 = вывод в ExtendedLinearSRGB (требуется sRGB -> Linear)
 } FrameUniforms;
 
 // 2D UI vertex structure
@@ -82,6 +83,40 @@ typedef struct {
     simd_float4   cameraRight;  // xyz = camera right vector * 1.5
     simd_float4   cameraUp;     // xyz = camera up vector * 1.5
 } ParticleUniforms;
+
+// Static UV coordinate per vertex (8 bytes, shared across all animation frames)
+typedef struct {
+    simd_float2 texCoord;
+} MetalAliasVertex;
+
+// Quantized pose vertex (4 bytes: matches Quake trivertx_t byte layout)
+typedef struct {
+    uint8_t pos[3];
+    uint8_t lightNormalIndex;
+} MetalAliasQuantizedVertex;
+
+// Per-instance dynamic parameters for GPU-side vertex lerp and lighting (144 bytes, 16-byte aligned)
+typedef struct {
+    simd_float4x4 mvpMatrix;
+    simd_float4   scaleOrigin;      // xyz = scale_origin, w = unused
+    simd_float4   modelScale;       // xyz = scale, w = lerpBlend
+    simd_float4   lightColorAlpha;  // xyz = lightcolor, w = entalpha
+    simd_float4   shadeVector;      // xyz = normalized light vector, w = unused
+    uint32_t      poseA_offset;     // vertex offset for pose 1
+    uint32_t      poseB_offset;     // vertex offset for pose 2
+    int32_t       shading;          // 1 = apply directional shading, 0 = unlit/flat
+    uint32_t      _pad;             // 16-byte structural alignment padding
+} MetalAliasInstanceData;
+
+// Global batch/pass uniforms for instanced alias rendering (32 bytes, 16-byte aligned)
+typedef struct {
+    simd_float4   fogColorDensity;  // xyz = fog color, w = density (0 = disabled)
+    int32_t       useGlow;          // 1 = sample glow/fullbright mask from slot 1
+    int32_t       _pad[3];          // 16-byte structural alignment padding
+} MetalAliasBatchUniforms;
+
+// Legacy alias uniforms alias for single-draw compatibility
+typedef MetalAliasInstanceData MetalAliasUniforms;
 
 // 3D function prototypes
 void R_Metal_Init3DPipeline(void);
@@ -170,12 +205,52 @@ void R_Metal_DrawParticlesInstanced(const MetalParticleInstance *instances,
 // Flushes and renders the accumulated world sprite batch (.spr)
 void R_Sprite_Flush(void);
 
+// Renders accumulated sprite quads in a single draw call with up to 16 bound textures
+void R_Metal_DrawSpriteBatch(MetalWorldVertex *vertices, uint32_t vertexCount,
+                             simd_float4x4 mvpMatrix,
+                             void * const *textures, uint32_t textureCount);
+
 // Monolithic static BSP world rendering in a single draw call via bindless textures
 void R_Metal_Draw3DWorldBindless(const uint32_t *indices, uint32_t indexCount,
                                  simd_float4x4 mvpMatrix,
                                  void * const *diffuseTextures, uint32_t numDiffuse,
                                  void * const *lightmapTextures, uint32_t numLightmaps,
                                  const char *tag);
+
+// Monolithic turbulent liquids rendering (water/lava/slime/teleport) in a single draw call via bindless textures
+void R_Metal_Draw3DWorldTurbulentBindless(const uint32_t *indices, uint32_t indexCount,
+                                          simd_float4x4 mvpMatrix,
+                                          void * const *diffuseTextures, uint32_t numDiffuse,
+                                          const char *tag);
+
+// GPU Mesh container for an alias model
+typedef struct MetalAliasMesh {
+    void     *indexBuffer;   // id<MTLBuffer> (uint16_t indices)
+    void     *uvBuffer;      // id<MTLBuffer> (MetalAliasVertex: simd_float2)
+    void     *poseBuffer;    // id<MTLBuffer> (MetalAliasQuantizedVertex: 4 bytes per vert)
+    uint32_t  indexCount;
+    uint32_t  vertCount;
+    uint32_t  numPoses;
+    uint32_t  poseVerts;
+} MetalAliasMesh;
+
+// Alias model GPU mesh creation and rendering
+void *R_Metal_AliasCreateMesh(const void *indices, uint32_t indexCount,
+                              const void *uvs, uint32_t vertCount,
+                              const void *poses, uint32_t numPoses, uint32_t poseVerts);
+void R_Metal_AliasFreeMesh(void *gpuMeshHandle);
+
+void R_Metal_DrawAliasModelGPU(void *gpuMeshHandle,
+                               uint32_t pose1, uint32_t pose2,
+                               const MetalAliasUniforms *uniforms,
+                               void *diffuseTexture, void *glowTexture,
+                               int blendMode, const char *tag);
+
+void R_Metal_DrawAliasMeshInstanced(void *gpuMeshHandle,
+                                    const MetalAliasInstanceData *instances,
+                                    uint32_t instanceCount,
+                                    void *diffuseTexture, void *glowTexture,
+                                    int blendMode, const char *tag);
 
 // Renders baked world geometry via static VBO and dynamic IBO
 void R_Metal_Draw3DWorldIndexed(const uint32_t *indices, uint32_t indexCount,

@@ -25,6 +25,7 @@
 // on the same machine.
 
 #include "quakedef.h"
+#include "MetalBridge.h"
 
 static qmodel_t*	loadmodel;
 static char	loadname[32];	// for hunk tags
@@ -247,11 +248,12 @@ void Mod_ResetAll (void)
     
     MQ_WorldVBO_Clear ();
     
-    //ericw -- free alias model VBOs
-    GLMesh_DeleteVertexBuffers ();
-    
     for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++)
     {
+        if (mod->metalMesh) {
+            R_Metal_AliasFreeMesh(mod->metalMesh);
+            mod->metalMesh = NULL;
+        }
         if (!mod->needload) //otherwise Mod_ClearAll() did it already
             TexMgr_FreeTexturesForOwner (mod);
         memset(mod, 0, sizeof(qmodel_t));
@@ -1613,7 +1615,7 @@ static void Mod_LoadFaces (lump_t *l, qboolean bsp2)
         
         // lighting info
         if (loadmodel->bspversion == BSPVERSION_QUAKE64)
-            lofs /= 2; // Q64 samples are 16bits instead 8 in normal Quake 
+            lofs /= 2; // Q64 samples are 16bits instead 8 in normal Quake
         
         if (lofs == -1)
             out->samples = NULL;

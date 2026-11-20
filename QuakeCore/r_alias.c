@@ -44,7 +44,7 @@ typedef struct {
 #define SHADOW_SKEW_X -0.7
 #define SHADOW_SKEW_Y 0.0
 #define SHADOW_VSCALE 0.0
-#define SHADOW_HEIGHT 0.1
+#define SHADOW_HEIGHT 0.35f
 
 // Metal matrix utilities
 static simd_float4x4 R_Metal_MatrixTranslation(float x, float y, float z)
@@ -131,8 +131,6 @@ static simd_float4x4 R_Metal_ComputeShadowMVP(entity_t *e, aliashdr_t *paliashdr
     m = simd_mul(m, sm);
     m = simd_mul(m, R_Metal_MatrixTranslation(0.0f, 0.0f, lheight));
     m = simd_mul(m, R_Metal_MatrixRotateZ(lerpdata->angles[1]));
-    m = simd_mul(m, R_Metal_MatrixRotateY(-lerpdata->angles[0]));
-    m = simd_mul(m, R_Metal_MatrixRotateX(lerpdata->angles[2]));
     
     if (scalefactor != 1.0f) {
         m = simd_mul(m, R_Metal_MatrixScale(scalefactor, scalefactor, scalefactor));
@@ -153,9 +151,128 @@ static uint32_t s_aliasMeshScratchCap = 0;
 static MetalWorldVertex *s_aliasTempScratch = NULL;
 static uint32_t s_aliasTempScratchCap = 0;
 
-// World model parallel batching structures (GCD)
+// Legacy CPU worker definitions (shadows and non-metalMesh entities)
 #define MQ_MAX_ALIAS_JOBS 1024
 #define ALIAS_MAX_TEMP_VERTS 256
+
+// GPU Alias Instancing Batch Structures
+#define MQ_MAX_ALIAS_BATCH_BUCKETS 64
+#define MQ_MAX_INSTANCES_PER_BATCH 256
+
+typedef struct {
+    void                    *gpuMesh;
+    void                    *diffuseTexture;
+    void                    *glowTexture;
+    int                      blendMode;
+    uint32_t                 instanceCount;
+    uint32_t                 numtris;
+    const char              *modelName; // Имя модели для системы логирования
+    MetalAliasInstanceData   instances[MQ_MAX_INSTANCES_PER_BATCH];
+} alias_batch_bucket_t;
+
+static alias_batch_bucket_t s_aliasBuckets[MQ_MAX_ALIAS_BATCH_BUCKETS];
+static uint32_t s_numAliasBuckets = 0;
+
+static void R_Alias_ClearBatches(void)
+{
+    s_numAliasBuckets = 0;
+}
+
+static void R_Alias_FlushBatches(void)
+{
+    for (uint32_t i = 0; i < s_numAliasBuckets; i++) {
+        alias_batch_bucket_t *b = &s_aliasBuckets[i];
+        if (b->instanceCount > 0 && b->gpuMesh) {
+            // Диагностическое логирование с контролем бюджета (до 40 строк за сессию в режиме DEV)
+            if (MLog_Budget("ALIAS·INST", 40)) {
+                MLog(MQ_LVL_DEV, "ALIAS·INST",
+                     "flush bucket[%02u]: '%s' instances=%u blend=%s tex=%p glow=%p mesh=%p",
+                     i,
+                     b->modelName ? b->modelName : "unknown",
+                     b->instanceCount,
+                     (b->blendMode == METAL_BLEND_ALPHA) ? "ALPHA" : "OPAQUE",
+                     b->diffuseTexture,
+                     b->glowTexture,
+                     b->gpuMesh);
+            }
+            
+            R_Metal_DrawAliasMeshInstanced(b->gpuMesh,
+                                           b->instances,
+                                           b->instanceCount,
+                                           b->diffuseTexture,
+                                           b->glowTexture,
+                                           b->blendMode,
+                                           "alias-world-instanced");
+            rs_aliaspasses += (b->numtris * b->instanceCount);
+            b->instanceCount = 0;
+        }
+    }
+    s_numAliasBuckets = 0;
+}
+
+static void R_Alias_QueueInstance(void *gpuMesh,
+                                  void *diffuseTexture,
+                                  void *glowTexture,
+                                  int blendMode,
+                                  uint32_t numtris,
+                                  const char *modelName,
+                                  const MetalAliasInstanceData *instData)
+{
+    // Поиск существующего совместимого бакета
+    for (uint32_t i = 0; i < s_numAliasBuckets; i++) {
+        alias_batch_bucket_t *b = &s_aliasBuckets[i];
+        if (b->gpuMesh == gpuMesh &&
+            b->diffuseTexture == diffuseTexture &&
+            b->glowTexture == glowTexture &&
+            b->blendMode == blendMode)
+        {
+            if (b->instanceCount < MQ_MAX_INSTANCES_PER_BATCH) {
+                b->instances[b->instanceCount++] = *instData;
+                return;
+            } else {
+                // Бакет полон: сбрасываем его на GPU и начинаем заново в этот же слот
+                if (MLog_Budget("ALIAS·INST", 10)) {
+                    MLog(MQ_LVL_DEV, "ALIAS·INST",
+                         "bucket overflow (%u): early flush '%s'",
+                         MQ_MAX_INSTANCES_PER_BATCH,
+                         b->modelName ? b->modelName : "unknown");
+                }
+                R_Metal_DrawAliasMeshInstanced(b->gpuMesh,
+                                               b->instances,
+                                               b->instanceCount,
+                                               b->diffuseTexture,
+                                               b->glowTexture,
+                                               b->blendMode,
+                                               "alias-world-instanced");
+                rs_aliaspasses += (b->numtris * b->instanceCount);
+                b->instances[0] = *instData;
+                b->instanceCount = 1;
+                return;
+            }
+        }
+    }
+    
+    // Если свободных бакетов нет — сбрасываем накопленные
+    if (s_numAliasBuckets >= MQ_MAX_ALIAS_BATCH_BUCKETS) {
+        if (MLog_Budget("ALIAS·INST", 5)) {
+            MLog(MQ_LVL_ALWAYS, "ALIAS·INST",
+                 "WARNING: all %u buckets exhausted, forcing mid-frame flush!",
+                 MQ_MAX_ALIAS_BATCH_BUCKETS);
+        }
+        R_Alias_FlushBatches();
+    }
+    
+    // Занимаем новый бакет
+    alias_batch_bucket_t *b = &s_aliasBuckets[s_numAliasBuckets++];
+    b->gpuMesh = gpuMesh;
+    b->diffuseTexture = diffuseTexture;
+    b->glowTexture = glowTexture;
+    b->blendMode = blendMode;
+    b->numtris = numtris;
+    b->modelName = modelName;
+    b->instances[0] = *instData;
+    b->instanceCount = 1;
+}
 
 typedef struct {
     aliashdr_t       *paliashdr;
@@ -611,10 +728,12 @@ void R_SetupAliasFrame (aliashdr_t *paliashdr, int frame, lerpdata_t *lerpdata)
     posenum = paliashdr->frames[frame].firstpose;
     numposes = paliashdr->frames[frame].numposes;
     
+    double animtime = (cl.render_time > 0.0) ? cl.render_time : cl.time;
+    
     if (numposes > 1)
     {
         e->lerptime = paliashdr->frames[frame].interval;
-        posenum += (int)(cl.time / e->lerptime) % numposes;
+        posenum += (int)(animtime / e->lerptime) % numposes;
     }
     else
         e->lerptime = 0.1;
@@ -647,9 +766,9 @@ void R_SetupAliasFrame (aliashdr_t *paliashdr, int frame, lerpdata_t *lerpdata)
     if (r_lerpmodels.value && !(e->model->flags & MOD_NOLERP && r_lerpmodels.value != 2))
     {
         if (e->lerpflags & LERP_FINISH && numposes == 1)
-            lerpdata->blend = CLAMP (0.0f, (float)(cl.time - e->lerpstart) / (e->lerpfinish - e->lerpstart), 1.0f);
+            lerpdata->blend = CLAMP (0.0f, (float)(animtime - e->lerpstart) / (e->lerpfinish - e->lerpstart), 1.0f);
         else
-            lerpdata->blend = CLAMP (0.0f, (float)(cl.time - e->lerpstart) / e->lerptime, 1.0f);
+            lerpdata->blend = CLAMP (0.0f, (float)(animtime - e->lerpstart) / e->lerptime, 1.0f);
         if (lerpdata->blend == 1.0f)
             e->previouspose = e->currentpose;
         lerpdata->pose1 = e->previouspose;
@@ -693,8 +812,8 @@ void R_SetupEntityTransform (entity_t *e, lerpdata_t *lerpdata)
         VectorCopy (e->angles,  e->currentangles);
     }
     
-    //set up values
-    if (r_lerpmove.value && e != &cl.viewent && e->lerpflags & LERP_MOVESTEP)
+    // Штатный lerpmove QuakeSpasm для плавного перемещения монстров
+    if (r_lerpmove.value && e != &cl.viewent && (e->lerpflags & LERP_MOVESTEP))
     {
         if (e->lerpflags & LERP_FINISH)
             blend = CLAMP (0.0f, (float)(cl.time - e->movelerpstart) / (e->lerpfinish - e->movelerpstart), 1.0f);
@@ -718,7 +837,7 @@ void R_SetupEntityTransform (entity_t *e, lerpdata_t *lerpdata)
         lerpdata->angles[1] = e->previousangles[1] + d[1] * blend;
         lerpdata->angles[2] = e->previousangles[2] + d[2] * blend;
     }
-    else //don't lerp
+    else //don't lerp or handled globally by r_interpolate
     {
         VectorCopy (e->origin, lerpdata->origin);
         VectorCopy (e->angles, lerpdata->angles);
@@ -915,7 +1034,55 @@ void R_DrawAliasModel (entity_t *e)
     
     void *glowTex = (fb && fb->metalTexture) ? fb->metalTexture : NULL;
     
-    // Single-pass rendering: diffuse texture and fullbright glow mask dispatched together
+    // Fast path: GPU-side vertex lerp on Metal 3
+    if (e->model->metalMesh)
+    {
+        extern vec3_t shadevector;
+        
+        MetalAliasUniforms uni;
+        memset(&uni, 0, sizeof(uni));
+        uni.mvpMatrix = entityMVP;
+        uni.scaleOrigin = (simd_float4){
+            paliashdr->scale_origin[0],
+            paliashdr->scale_origin[1] * fovscale,
+            paliashdr->scale_origin[2] * fovscale,
+            0.0f
+        };
+        uni.modelScale = (simd_float4){
+            paliashdr->scale[0],
+            paliashdr->scale[1] * fovscale,
+            paliashdr->scale[2] * fovscale,
+            lerpdata.blend
+        };
+        uni.lightColorAlpha = (simd_float4){ lightcolor[0], lightcolor[1], lightcolor[2], entalpha };
+        MetalAliasMesh *mesh = (MetalAliasMesh *)e->model->metalMesh;
+        uint32_t maxPoses = (mesh->numPoses > 0) ? mesh->numPoses : 1;
+        uint32_t p1 = (uint32_t)lerpdata.pose1 % maxPoses;
+        uint32_t p2 = (uint32_t)lerpdata.pose2 % maxPoses;
+        
+        uni.poseA_offset = p1 * mesh->poseVerts;
+        uni.poseB_offset = p2 * mesh->poseVerts;
+        
+        if (e == &cl.viewent) {
+            // Строго сверху (Z = 1), Y = 0 (убирает перекос лево/право)
+            uni.shadeVector = (simd_float4){ 0.0f, 0.0f, 1.0f, 0.0f };
+        } else {
+            uni.shadeVector = (simd_float4){ shadevector[0], shadevector[1], shadevector[2], 0.0f };
+        }
+        
+        uni.shading = shading ? 1 : 0;
+        
+        int blendMode = (entalpha < 1.0f) ? METAL_BLEND_ALPHA : METAL_BLEND_OPAQUE;
+        R_Metal_DrawAliasModelGPU(e->model->metalMesh,
+                                  p1, p2,
+                                  &uni, metalTex, glowTex,
+                                  blendMode,
+                                  (e == &cl.viewent) ? "alias-viewmodel-gpu" : "alias-world-gpu");
+        rs_aliaspasses += paliashdr->numtris;
+        return;
+    }
+    
+    // Single-pass rendering: diffuse texture and fullbright glow mask dispatched together (CPU fallback)
     GL_DrawAliasFrame_Metal(paliashdr, lerpdata, entityMVP, metalTex, glowTex);
 }
 
@@ -1135,6 +1302,12 @@ void R_DrawAliasShadows (void)
         if (e == &cl.viewent || (e->model->flags & MOD_NOSHADOW))
             continue;
         
+        // Не тратить ресурсы на тени монстров/трупов дальше 768 юнитов от камеры
+        vec3_t toCam;
+        VectorSubtract(e->origin, r_origin, toCam);
+        if (DotProduct(toCam, toCam) > (768.0f * 768.0f))
+            continue;
+        
         float alpha = ENTALPHA_DECODE(e->alpha);
         if (alpha <= 0.0f)
             continue;
@@ -1155,14 +1328,23 @@ void R_DrawAliasShadows (void)
         
         R_LightPoint(e->origin);
         float lheight = e->origin[2] - lightspot[2];
-        if (lheight < -16.0f || lheight > 256.0f)
+        
+        // Ограничиваем высоту для шрагов и парящих под потолком врагов
+        const float kMaxShadowHeight = 160.0f;
+        if (lheight < -16.0f || lheight > kMaxShadowHeight)
+            continue;
+        
+        // Линейно ослабляем тень по мере удаления от пола
+        float heightFade = 1.0f - (fmaxf(lheight, 0.0f) / kMaxShadowHeight);
+        float shadowAlpha = 0.5f * alpha * heightFade;
+        if (shadowAlpha < 0.03f)
             continue;
         
         simd_float4x4 shadowModelMat = R_Metal_ComputeShadowModelMatrix(e, paliashdr, &lerpdata, lheight);
         uint32_t meshMax = (uint32_t)paliashdr->numtris * 3;
         
         uint32_t unpacked = R_Alias_UnpackShadowMesh(paliashdr, &lerpdata,
-                                                     shadowModelMat, 0.5f * alpha,
+                                                     shadowModelMat, shadowAlpha,
                                                      s_shadowBatchPool + totalVerts, meshMax);
         totalVerts += unpacked;
     }
@@ -1221,6 +1403,8 @@ void R_DrawAliasEntitiesOnList (qboolean alphapass)
 {
     if (!r_drawentities.value || cl_numvisedicts == 0)
         return;
+    
+    R_Alias_ClearBatches();
     
     int numJobs = 0;
     size_t totalVertsNeeded = 0;
@@ -1282,10 +1466,50 @@ void R_DrawAliasEntitiesOnList (qboolean alphapass)
             fb = NULL;
         
         void *metalTex = (tx && tx->metalTexture) ? tx->metalTexture : NULL;
+        void *glowTex  = (fb && fb->metalTexture) ? fb->metalTexture : NULL;
         simd_float4x4 entityMVP = R_Metal_ComputeEntityMVP(e, paliashdr, &lerpdata, 1.0f);
-        uint32_t meshMax = (uint32_t)paliashdr->numtris * 3;
         
-        // Base model pass with integrated fullbright glow mask
+        // Быстрый путь Metal 3: группировка в GPU Instancing батчи
+        if (e->model->metalMesh)
+        {
+            extern vec3_t shadevector;
+            MetalAliasMesh *mesh = (MetalAliasMesh *)e->model->metalMesh;
+            uint32_t maxPoses = (mesh->numPoses > 0) ? mesh->numPoses : 1;
+            uint32_t p1 = (uint32_t)lerpdata.pose1 % maxPoses;
+            uint32_t p2 = (uint32_t)lerpdata.pose2 % maxPoses;
+            
+            MetalAliasInstanceData inst;
+            memset(&inst, 0, sizeof(inst));
+            inst.mvpMatrix = entityMVP;
+            inst.scaleOrigin = (simd_float4){
+                paliashdr->scale_origin[0],
+                paliashdr->scale_origin[1],
+                paliashdr->scale_origin[2],
+                0.0f
+            };
+            inst.modelScale = (simd_float4){
+                paliashdr->scale[0],
+                paliashdr->scale[1],
+                paliashdr->scale[2],
+                lerpdata.blend
+            };
+            inst.lightColorAlpha = (simd_float4){ lightcolor[0], lightcolor[1], lightcolor[2], alpha };
+            inst.shadeVector = (simd_float4){ shadevector[0], shadevector[1], shadevector[2], 0.0f };
+            inst.poseA_offset = p1 * mesh->poseVerts;
+            inst.poseB_offset = p2 * mesh->poseVerts;
+            inst.shading = 1;
+            
+            int blendMode = (alpha < 1.0f) ? METAL_BLEND_ALPHA : METAL_BLEND_OPAQUE;
+            const char *mName = (e->model && e->model->name[0]) ? e->model->name : "alias-model";
+            R_Alias_QueueInstance(e->model->metalMesh, metalTex, glowTex,
+                                  blendMode, paliashdr->numtris,
+                                  mName,
+                                  &inst);
+            continue;
+        }
+        
+        // Резервный софтверный путь на CPU GCD (только если нет metalMesh)
+        uint32_t meshMax = (uint32_t)paliashdr->numtris * 3;
         if (numJobs < MQ_MAX_ALIAS_JOBS)
         {
             alias_job_t *job = &s_aliasJobs[numJobs++];
@@ -1293,7 +1517,7 @@ void R_DrawAliasEntitiesOnList (qboolean alphapass)
             job->lerpdata    = lerpdata;
             job->entityMVP   = entityMVP;
             job->metalTex    = metalTex;
-            job->glowTex     = (fb && fb->metalTexture) ? fb->metalTexture : NULL;
+            job->glowTex     = glowTex;
             job->baseLight   = (simd_float3){ lightcolor[0], lightcolor[1], lightcolor[2] };
             job->shadedots   = shadedots;
             job->entalpha    = alpha;
@@ -1305,6 +1529,9 @@ void R_DrawAliasEntitiesOnList (qboolean alphapass)
             totalVertsNeeded += meshMax;
         }
     }
+    
+    // Сброс всех накопленных инстанс-пакетов Metal 3 перед проверкой CPU-джоб
+    R_Alias_FlushBatches();
     
     if (numJobs == 0)
         return;

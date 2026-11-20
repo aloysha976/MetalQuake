@@ -117,8 +117,8 @@ void MQ_RT_BindResources(id<MTLRenderCommandEncoder> encoder)
     if (!encoder || !s_worldTLAS || !s_worldBLAS)
         return;
     
-    // 1. Bind TLAS to buffer slot 2 of the fragment stage
-    [encoder setFragmentAccelerationStructure:s_worldTLAS atBufferIndex:2];
+    // 1. Bind TLAS to buffer slot 3 of the fragment stage (slot 2 is reserved for material table)
+    [encoder setFragmentAccelerationStructure:s_worldTLAS atBufferIndex:3];
     
     // 2. Declare resource residency for BLAS and TLAS (required by Metal Ray Tracing)
     [encoder useResource:s_worldBLAS usage:MTLResourceUsageRead stages:MTLRenderStageFragment];

@@ -205,20 +205,12 @@ void R_MarkSurfaces (void)
     for (i=0 ; i<lightmap_count ; i++)
         lightmaps[i].polys = NULL;
     
-    // check this leaf for water portals
-    // TODO: loop through all water surfs and use distance to leaf cullbox
-    nearwaterportal = false;
-    for (i=0, mark = r_viewleaf->firstmarksurface; i < r_viewleaf->nummarksurfaces; i++, mark++)
-        if ((*mark)->flags & SURF_DRAWTURB)
-            nearwaterportal = true;
-    
-    // choose vis data
+    // Для полупрозрачной воды на открытых картах всегда используем FatPVS,
+    // чтобы видимость водоема не мигала при переходе между соседними листьями
     if (r_novis.value || r_viewleaf->contents == CONTENTS_SOLID || r_viewleaf->contents == CONTENTS_SKY)
         vis = Mod_NoVisPVS (cl.worldmodel);
-    else if (nearwaterportal)
-        vis = SV_FatPVS (r_origin, cl.worldmodel);
     else
-        vis = Mod_LeafPVS (r_viewleaf, cl.worldmodel);
+        vis = SV_FatPVS (r_origin, cl.worldmodel);
     
     r_visframecount++;
     
@@ -233,8 +225,15 @@ void R_MarkSurfaces (void)
     {
         if (vis[i>>3] & (1<<(i&7)))
         {
-            if (R_CullBox(leaf->minmaxs, leaf->minmaxs + 3))
-                continue;
+            // Не отсекаем листы с водой/жидкостями по боксу фрустума,
+            // иначе при поднятии взгляда водные глади снизу отбрасываются целиком
+            if (leaf->contents != CONTENTS_WATER &&
+                leaf->contents != CONTENTS_SLIME &&
+                leaf->contents != CONTENTS_LAVA)
+            {
+                if (R_CullBox(leaf->minmaxs, leaf->minmaxs + 3))
+                    continue;
+            }
             
             if (r_oldskyleaf.value || leaf->contents != CONTENTS_SKY)
                 for (j=0, mark = leaf->firstmarksurface; j<leaf->nummarksurfaces; j++, mark++)
@@ -243,9 +242,21 @@ void R_MarkSurfaces (void)
                     if (surf->visframe != r_visframecount)
                     {
                         surf->visframe = r_visframecount;
-                        if (!R_CullBox(surf->mins, surf->maxs) && !R_BackFaceCull (surf))
+                        
+                        // Поверхности жидкостей (SURF_DRAWTURB) никогда не отсекаем по CullBox и BackFace:
+                        // вода плоская (mins.z == maxs.z) и при взгляде к горизонту нижняя плоскость фрустума
+                        // ошибочно выбрасывает ее из кадра.
+                        if (surf->flags & SURF_DRAWTURB)
                         {
-                            rs_brushpolys++; //count wpolys here
+                            rs_brushpolys++;
+                            R_ChainSurface(surf, chain_world);
+                            R_RenderDynamicLightmaps(surf);
+                            if (surf->texinfo->texture->warpimage)
+                                surf->texinfo->texture->update_warp = true;
+                        }
+                        else if (!R_CullBox(surf->mins, surf->maxs) && !R_BackFaceCull(surf))
+                        {
+                            rs_brushpolys++;
                             R_ChainSurface(surf, chain_world);
                             R_RenderDynamicLightmaps(surf);
                             if (surf->texinfo->texture->warpimage)
@@ -554,11 +565,15 @@ void R_DrawTextureChains_Multitexture (qmodel_t *model, entity_t *ent, texchain_
         for (i = 0; i < model->numtextures; i++)
         {
             t = model->textures[i];
-            if (!t || !t->texturechains[chain] || (t->texturechains[chain]->flags & (SURF_DRAWTURB | SURF_DRAWSKY | SURF_DRAWTILED | SURF_NOTEXTURE)))
+            if (!t || !t->texturechains[chain])
                 continue;
             
             for (s = t->texturechains[chain]; s; s = s->texturechain)
             {
+                // Строго пропускаем жидкости, небо и триггеры
+                if (s->flags & (SURF_DRAWTURB | SURF_DRAWSKY | SURF_DRAWTILED | SURF_NOTEXTURE))
+                    continue;
+                
                 uint32_t numVerts = (uint32_t)s->vbo_numverts;
                 if (numVerts == 0)
                     continue;
@@ -575,32 +590,26 @@ void R_DrawTextureChains_Multitexture (qmodel_t *model, entity_t *ent, texchain_
         if (totalIndices == 0)
             return;
         
-        // 2. Build texture arrays (handling animated switches and monitors)
-        void *diffuseHandles[96];
-        uint32_t numDiffuse = (model->numtextures > 96) ? 96 : (uint32_t)model->numtextures;
-        for (uint32_t d = 0; d < numDiffuse; d++)
+        // 2. Update slots in baked Argument Buffer only for animated textures (switches, monitors)
+        for (uint32_t d = 0; d < (uint32_t)model->numtextures; d++)
         {
             texture_t *tex = model->textures[d];
-            if (tex)
+            if (tex && (tex->anim_total > 0 || tex->anim_next))
             {
                 texture_t *animTex = R_TextureAnimation(tex, ent ? ent->frame : 0);
                 gltexture_t *glt = animTex ? (gltexture_t *)animTex->gltexture : (gltexture_t *)tex->gltexture;
-                diffuseHandles[d] = glt ? glt->metalTexture : NULL;
-            }
-            else
-            {
-                diffuseHandles[d] = NULL;
+                gltexture_t *glowGlt = (gl_fullbrights.value && animTex) ? animTex->fullbright : NULL;
+                
+                void *diffHandle = (glt && glt->metalTexture) ? glt->metalTexture : NULL;
+                void *glowHandle = (glowGlt && glowGlt->metalTexture) ? glowGlt->metalTexture : NULL;
+                
+                if (diffHandle || glowHandle) {
+                    MQ_WorldMaterialBuffer_UpdateSlot(d, diffHandle, glowHandle);
+                }
             }
         }
         
-        // 3. Build lightmap page arrays
-        void *lightmapHandles[32];
-        uint32_t numLightmaps = (lightmap_count > 32) ? 32 : (uint32_t)lightmap_count;
-        for (uint32_t lmn = 0; lmn < numLightmaps; lmn++)
-        {
-            lightmapHandles[lmn] = R_GetLightmapTextureHandle(lmn);
-        }
-        
+        // 3. Monolithic 2D Texture Array is bound directly inside R_Metal_Draw3DWorldBindless
         // Diagnostic log: output to both engine console and persistent MLog
         static int s_bindlessCheck = 0;
         if (s_bindlessCheck < 5) {
@@ -613,10 +622,10 @@ void R_DrawTextureChains_Multitexture (qmodel_t *model, entity_t *ent, texchain_
             s_bindlessCheck++;
         }
         
-        // 4. Single draw call submission for the entire static level
+        // 4. Single draw call submission for the entire static level (textures read from baked Argument Buffer)
         R_Metal_Draw3DWorldBindless(batchIndices, totalIndices, mvp,
-                                    diffuseHandles, numDiffuse,
-                                    lightmapHandles, numLightmaps,
+                                    NULL, (uint32_t)model->numtextures,
+                                    NULL, (uint32_t)lightmap_count,
                                     "world-static-bindless");
         return;
     }
@@ -935,7 +944,9 @@ void R_Metal_DrawWaterPolySurface (msurface_t *fa, entity_t *ent, simd_float4x4 
     uint32_t n = 0;
     for (int i = 0; i < p->numverts - 2; i++)
     {
-        const int idx[3] = { 0, i + 1, i + 2 };
+        int i1 = (fa->flags & SURF_PLANEBACK) ? (i + 2) : (i + 1);
+        int i2 = (fa->flags & SURF_PLANEBACK) ? (i + 1) : (i + 2);
+        const int idx[3] = { 0, i1, i2 };
         for (int k = 0; k < 3; k++)
         {
             const float *v = p->verts[idx[k]];
@@ -965,6 +976,72 @@ void R_DrawTextureChains_Water (qmodel_t *model, entity_t *ent, texchain_t chain
     
     if (r_drawflat_cheatsafe || r_lightmap_cheatsafe)
         return;
+    
+    qboolean useWorldVBO = (model == cl.worldmodel) && MQ_WorldVBO_IsReady();
+    
+    // =========================================================================
+    // Bindless fast-path: render ALL turbulent surfaces (water/lava/slime/tele) in 1 draw call
+    // =========================================================================
+    if (useWorldVBO)
+    {
+        uint32_t maxIndices = MQ_WorldVBO_GetTotalVertexCount();
+        if (maxIndices == 0) maxIndices = 65536;
+        uint32_t *batchIndices = R_GetSurfIndexScratch(maxIndices);
+        if (!batchIndices) return;
+        
+        uint32_t totalIndices = 0;
+        
+        for (i = 0; i < model->numtextures; i++)
+        {
+            t = model->textures[i];
+            if (!t || !t->texturechains[chain])
+                continue;
+            
+            for (s = t->texturechains[chain]; s; s = s->texturechain)
+            {
+                if (!(s->flags & SURF_DRAWTURB))
+                    continue;
+                
+                uint32_t numVerts = (uint32_t)s->vbo_numverts;
+                if (numVerts == 0)
+                    continue;
+                
+                uint32_t first = (uint32_t)s->vbo_firstvert;
+                for (uint32_t k = 0; k < numVerts; k++)
+                {
+                    batchIndices[totalIndices++] = first + k;
+                }
+                rs_brushpasses++;
+            }
+        }
+        
+        if (totalIndices == 0)
+            return;
+        
+        // Update slots in baked Argument Buffer only for animated liquid textures (*water0, *lava1)
+        for (uint32_t d = 0; d < (uint32_t)model->numtextures; d++)
+        {
+            texture_t *tex = model->textures[d];
+            if (tex && (tex->anim_total > 0 || tex->anim_next))
+            {
+                texture_t *animTex = R_TextureAnimation(tex, ent ? ent->frame : 0);
+                gltexture_t *glt = animTex ? (gltexture_t *)animTex->gltexture : (gltexture_t *)tex->gltexture;
+                gltexture_t *glowGlt = (gl_fullbrights.value && animTex) ? animTex->fullbright : NULL;
+                
+                void *diffHandle = (glt && glt->metalTexture) ? glt->metalTexture : NULL;
+                void *glowHandle = (glowGlt && glowGlt->metalTexture) ? glowGlt->metalTexture : NULL;
+                
+                if (diffHandle || glowHandle) {
+                    MQ_WorldMaterialBuffer_UpdateSlot(d, diffHandle, glowHandle);
+                }
+            }
+        }
+        
+        R_Metal_Draw3DWorldTurbulentBindless(batchIndices, totalIndices, mvp,
+                                             NULL, (uint32_t)model->numtextures,
+                                             "world-turbulent-bindless");
+        return;
+    }
     
     extern cvar_t r_wateralpha, r_lavaalpha, r_telealpha, r_slimealpha;
     extern float map_wateralpha, map_lavaalpha, map_telealpha, map_slimealpha;
@@ -1029,7 +1106,9 @@ void R_DrawTextureChains_Water (qmodel_t *model, entity_t *ent, texchain_t chain
             
             for (int j = 0; j < p->numverts - 2; j++)
             {
-                const int idx[3] = { 0, j + 1, j + 2 };
+                int i1 = (s->flags & SURF_PLANEBACK) ? (j + 2) : (j + 1);
+                int i2 = (s->flags & SURF_PLANEBACK) ? (j + 1) : (j + 2);
+                const int idx[3] = { 0, i1, i2 };
                 for (int k = 0; k < 3; k++)
                 {
                     const float *v = p->verts[idx[k]];
@@ -1174,16 +1253,12 @@ void R_DrawTextureChains (qmodel_t *model, entity_t *ent, texchain_t chain, simd
     R_EndTransparentDrawing (entalpha);
     
 fullbrights:
-    // Secondary glow pass is omitted in single-pass rendering mode
-    // to avoid redundant geometry processing on TBDR architectures.
-    /*
-     if (gl_fullbrights.value)
-     {
-     Fog_StartAdditive ();
-     R_DrawTextureChains_Glow (model, ent, chain, mvp);
-     Fog_StopAdditive ();
-     }
-     */
+    // Статический мир отрисовывает свечение внутри единого прохода R_DrawTextureChains_Multitexture.
+    // Отдельный Glow-проход вызывается только для не-биндлесс браш-моделей (двери, платформы).
+    if (gl_fullbrights.value && (model != cl.worldmodel || !MQ_WorldVBO_IsReady()))
+    {
+        R_DrawTextureChains_Glow (model, ent, chain, mvp);
+    }
     return;
 }
 

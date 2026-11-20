@@ -22,7 +22,7 @@
 // gl_mesh.c: triangle model functions
 
 #include "quakedef.h"
-
+#include "MetalBridge.h"
 
 /*
  =================================================================
@@ -345,11 +345,98 @@ void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
  */
 static void GL_MakeAliasModelDisplayLists_VBO (qmodel_t *aliasmodel, aliashdr_t *paliashdr)
 {
-    // Redundant vertex and index staging for legacy OpenGL VBOs is omitted.
-    // Preserves Hunk memory pools when loading maps with extensive model sets.
-    // Model vertices are interpolated directly via SIMD NEON / GCD pipelines in r_alias.c.
-    (void)aliasmodel;
-    (void)paliashdr;
+    if (!aliasmodel || !paliashdr || paliashdr->numtris <= 0 || paliashdr->poseverts <= 0)
+        return;
+    
+    // 1. Allocate temporary staging buffers for triangulation
+    uint32_t maxIndices = (uint32_t)paliashdr->numtris * 3;
+    uint16_t *indices = (uint16_t *)malloc(maxIndices * sizeof(uint16_t));
+    MetalAliasVertex *uvs = (MetalAliasVertex *)malloc(paliashdr->poseverts * sizeof(MetalAliasVertex));
+    if (!indices || !uvs) {
+        free(indices);
+        free(uvs);
+        return;
+    }
+    
+    int *cmds = (int *)((byte *)paliashdr + paliashdr->commands);
+    uint32_t vertCursor = 0;
+    uint32_t indexCount = 0;
+    
+    // 2. Unpack strips and fans from the command stream into triangle index list and UV array
+    while (1)
+    {
+        int count = *cmds++;
+        if (!count)
+            break;
+        
+        qboolean isFan = (count < 0);
+        int numVerts = isFan ? -count : count;
+        uint32_t stripStart = vertCursor;
+        
+        for (int j = 0; j < numVerts; j++)
+        {
+            float u = *(float *)cmds++;
+            float v = *(float *)cmds++;
+            
+            if (stripStart + j < (uint32_t)paliashdr->poseverts) {
+                uvs[stripStart + j].texCoord = (simd_float2){ u, v };
+            }
+            vertCursor++;
+        }
+        
+        // Triangulate strip or fan
+        if (isFan)
+        {
+            for (int k = 1; k < numVerts - 1; k++)
+            {
+                if (indexCount + 3 <= maxIndices)
+                {
+                    indices[indexCount++] = (uint16_t)(stripStart + 0);
+                    indices[indexCount++] = (uint16_t)(stripStart + k);
+                    indices[indexCount++] = (uint16_t)(stripStart + k + 1);
+                }
+            }
+        }
+        else
+        {
+            for (int k = 0; k < numVerts - 2; k++)
+            {
+                if (indexCount + 3 <= maxIndices)
+                {
+                    if (k & 1)
+                    {
+                        indices[indexCount++] = (uint16_t)(stripStart + k + 1);
+                        indices[indexCount++] = (uint16_t)(stripStart + k);
+                        indices[indexCount++] = (uint16_t)(stripStart + k + 2);
+                    }
+                    else
+                    {
+                        indices[indexCount++] = (uint16_t)(stripStart + k);
+                        indices[indexCount++] = (uint16_t)(stripStart + k + 1);
+                        indices[indexCount++] = (uint16_t)(stripStart + k + 2);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 3. Create persistent Metal buffers on GPU (Shared storage mode)
+    const void *posesData = (const void *)((byte *)paliashdr + paliashdr->posedata);
+    
+    if (aliasmodel->metalMesh) {
+        R_Metal_AliasFreeMesh(aliasmodel->metalMesh);
+        aliasmodel->metalMesh = NULL;
+    }
+    
+    aliasmodel->metalMesh = R_Metal_AliasCreateMesh(indices, indexCount,
+                                                    uvs, paliashdr->poseverts,
+                                                    posesData, (uint32_t)paliashdr->numposes,
+                                                    (uint32_t)paliashdr->poseverts);
+    aliasmodel->numindexes = (int)indexCount;
+    aliasmodel->numverts_vbo = paliashdr->poseverts;
+    
+    free(indices);
+    free(uvs);
 }
 
 /*
@@ -369,7 +456,7 @@ void GLMesh_LoadVertexBuffers (void)
  */
 void GLMesh_DeleteVertexBuffers (void)
 {
-    // Release legacy OpenGL VBO references
+    // Release Metal GPU mesh buffers for alias models
     int j;
     qmodel_t *m;
     
@@ -378,7 +465,10 @@ void GLMesh_DeleteVertexBuffers (void)
         if (!(m = cl.model_precache[j])) break;
         if (m->type != mod_alias) continue;
         
-        m->meshvbo = 0;
-        m->meshindexesvbo = 0;
+        if (m->metalMesh)
+        {
+            R_Metal_AliasFreeMesh(m->metalMesh);
+            m->metalMesh = NULL;
+        }
     }
 }

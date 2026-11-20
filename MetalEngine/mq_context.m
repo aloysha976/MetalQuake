@@ -71,8 +71,8 @@ void R_Metal_UpdateSampler(void)
     samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
     samplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
     
-    // Critical for alias models: NotMipmapped disables sampling non-existent mip levels for .mdl files
-    samplerDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+    // Enable linear mipmapping: BSP world textures have full mip chains generated/loaded
+    samplerDesc.mipFilter = MTLSamplerMipFilterLinear;
     
     samplerDesc.maxAnisotropy = aniso;
     samplerDesc.sAddressMode = MTLSamplerAddressModeRepeat;

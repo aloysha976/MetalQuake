@@ -49,8 +49,20 @@ bool MQ_WorldVBO_IsReady(void);
 // Returns a pointer to the static world MTLBuffer.
 #if defined(__OBJC__)
 id<MTLBuffer> MQ_WorldVBO_GetBuffer(void);
+id<MTLBuffer> MQ_WorldMaterialBuffer_GetBuffer(void);
+void MQ_WorldMaterialBuffer_BindResident(id<MTLRenderCommandEncoder> encoder);
+void MQ_WorldMaterialBuffer_UpdateSlot(uint32_t index, void *diffuseHandle, void *glowHandle);
+id<MTLTexture> MQ_WorldLightmapArray_GetTexture(void);
+void MQ_WorldLightmapArray_Allocate(uint32_t numLayers);
+void MQ_WorldLightmapArray_UpdateSlice(uint32_t slice, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *bytes, uint32_t bytesPerRow);
 #else
 void *MQ_WorldVBO_GetBuffer(void);
+void *MQ_WorldMaterialBuffer_GetBuffer(void);
+void MQ_WorldMaterialBuffer_BindResident(void *encoder);
+void MQ_WorldMaterialBuffer_UpdateSlot(uint32_t index, void *diffuseHandle, void *glowHandle);
+void *MQ_WorldLightmapArray_GetTexture(void);
+void MQ_WorldLightmapArray_Allocate(uint32_t numLayers);
+void MQ_WorldLightmapArray_UpdateSlice(uint32_t slice, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *bytes, uint32_t bytesPerRow);
 #endif
 
 // Baked geometry telemetry and metrics.

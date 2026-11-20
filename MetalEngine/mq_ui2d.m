@@ -295,6 +295,7 @@ void R_Metal_Flush2D(void)
         uniforms.modelViewMatrix  = matrix_identity_float4x4;
         uniforms.useTexture       = 1;
         uniforms.useFullbright    = 0;
+        uniforms.isEDR            = (g_edrActive && g_mqFlushDestination == 1) ? 1 : 0;
         
         // Upload uniforms via dynamic ring buffer
         {

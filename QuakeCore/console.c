@@ -32,7 +32,9 @@
 #endif
 #include "quakedef.h"
 
-int 		con_linewidth;
+extern const char *MQ_GetBundleVersionString(void);
+
+int         con_linewidth;
 
 float		con_cursorspeed = 4;
 
@@ -1260,7 +1262,7 @@ void Con_DrawConsole (int lines, qboolean drawinput)
     
     // draw version number in bottom right
     y += 8;
-    q_snprintf (ver, sizeof(ver), "MetalQuake " METALQUAKE_VER_STRING);
+    q_snprintf (ver, sizeof(ver), "MetalQuake %s", MQ_GetBundleVersionString());
     int ver_len = (int)strlen(ver);
     for (x = 0; x < ver_len; x++)
         Draw_Character ((con_linewidth - ver_len + x + 2)<<3, y, ver[x] /*+ 128*/);

@@ -610,48 +610,39 @@ void Host_ClearMemory (void)
  ===================
  Host_FilterTime
  
- MetalQuake: returns false only when the RENDER frame is too soon
- (host_maxfps caps rendering; physics paces itself on the fixed step).
+ MetalQuake: рассчитывает стабильный g_renderDelta на базе Sys_DoubleTime.
+ Аппаратный VSync и дисплейный пейсинг на macOS управляются слоем Metal
+ (через displaySyncEnabled/CAMetalDisplayLink), без софтверного засыпания треда.
  ===================
  */
 static qboolean Host_FilterTime (double time)
 {
-    float maxfps; //johnfitz
-    realtime += time;
+    double curtime = Sys_DoubleTime ();
     
-    // [FIX VSYNC-PACING] Если VSync активен, CAMetalLayer сам пейсит кадры аппаратно.
-    // Любые софтверные капы и сны здесь приведут к double-pacing и потере времени физики.
-    if (Cvar_VariableValue("vid_vsync") != 0) {
-        g_renderDelta = realtime - oldrealtime;
-        oldrealtime = realtime;
-        return true;
-    }
+    if (oldrealtime <= 0.0)
+        oldrealtime = curtime - (time > 0.0 ? time : 0.016);
     
-    //johnfitz -- max fps cvar (render-only since [E4-A])
-    maxfps = CLAMP (10.f, host_maxfps.value, 240.f);
-    if (!cls.timedemo && host_maxfps.value > 0)
-    {
-        double target_interval = 1.0 / maxfps;
-        double elapsed = realtime - oldrealtime;
-        
-        // [FIX] Вместо дропа кадра (что убивало время для физики и давало slow-motion),
-        // мы "спим" оставшееся время, чтобы соблюсти кап, и гарантированно идем дальше.
-        if (elapsed < target_interval)
-        {
-            double sleep_ms = (target_interval - elapsed) * 1000.0;
-            if (sleep_ms > 2.0)
-                Sys_Sleep((unsigned long)(sleep_ms - 2.0)); // спим чуть меньше для точности
-            
-            // Обновляем realtime после сна, чтобы отразить реальное прошедшее время
-            realtime = Sys_DoubleTime();
-        }
-    }
-    //johnfitz
-    
-    //MetalQuake [E4-A] true wall-clock span between rendered frames
+    realtime = curtime;
     g_renderDelta = realtime - oldrealtime;
+    
+    // Защита от выбросов времени (фон, пауза, остановка отладчиком)
+    if (g_renderDelta < 0.0)
+        g_renderDelta = 0.0;
+    else if (g_renderDelta > 0.1)
+        g_renderDelta = 0.1;
+    
+    // Софтверный ограничитель частоты кадров рендера (только при отключенном VSync)
+    if (Cvar_VariableValue("vid_vsync") == 0 && !cls.timedemo && host_maxfps.value > 0)
+    {
+        float maxfps = CLAMP (10.f, host_maxfps.value, 240.f);
+        double target_interval = 1.0 / maxfps;
+        
+        if (g_renderDelta < target_interval)
+            return false; // Рендер пропускается до достижения целевого интервала
+    }
+    
     oldrealtime = realtime;
-    return true; // [FIX] Больше никогда не дропаем кадр. Физика всегда получит свое время.
+    return true;
 }
 
 /*
@@ -761,6 +752,14 @@ void _Host_Frame (float time)
     // allow mice or other external controllers to add commands
     IN_Commands ();
     
+    // [FIX MQ-INPUT] Обновляем мышиный обзор (mouselook) каждый кадр рендера,
+    // чтобы поворот камеры работал с частотой экрана (120 Гц), без задержки до тика физики
+    extern void IN_ApplyLook (void);
+    if (cls.state == ca_connected && key_dest == key_game)
+    {
+        IN_ApplyLook ();
+    }
+    
     // process console commands
     Cbuf_Execute ();
     GC_Frame (); // [MQ-GC] пер-кадровые трекеры достижений
@@ -821,8 +820,10 @@ void _Host_Frame (float time)
             steps++;
         }
         
-        if (steps == MAX_SIM_STEPS)
-            sim_accum = 0; // fell too far behind: drop backlog, avoid catch-up spiral
+        // [FIX] Вместо грубого сброса sim_accum = 0 ограничиваем остаток,
+        // сохраняя дробную часть для непрерывной интерполяции без слоу-моушна
+        if (sim_accum > dt)
+            sim_accum = fmod (sim_accum, dt);
         
         // fraction of a step pending -> interpolation factor for the renderer
         g_interpAlpha = dt > 0 ? (float) (sim_accum / dt) : 0.f;

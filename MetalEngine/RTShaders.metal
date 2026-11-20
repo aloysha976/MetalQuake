@@ -33,6 +33,7 @@ struct WorldUniforms {
     int pbrEnabled;
     int pbrDebug;
     int useGlow;
+    float4 liquidAlphas;      // Синхронизировано с MetalWorldUniforms в mq_world3d.m
     GpuDlight dlights[MQ_GPU_DLIGHTS];
 };
 
@@ -47,25 +48,31 @@ struct WorldVertexOut {
     float  fogDistance;
 };
 
+struct WorldMaterialTable {
+    array<texture2d<float>, 1024> diffuseTextures [[id(0)]];
+    array<texture2d<float>, 1024> glowTextures    [[id(1024)]];
+};
+
 // ======================================================================
 // 1. Static BSP World Bindless Shader (Single Draw Call with Hardware RT Shadows)
 // ======================================================================
 fragment float4 world_static_rt_fragment_main(
                                               WorldVertexOut in [[stage_in]],
-                                              array<texture2d<float>, 96> diffuseTextures  [[texture(0)]],
-                                              array<texture2d<float>, 32> lightmapTextures [[texture(96)]],
-                                              sampler textureSampler [[sampler(0)]],
-                                              constant WorldUniforms &uniforms [[buffer(1)]],
-                                              instance_acceleration_structure tlas [[buffer(2)]])
+                                              constant WorldMaterialTable &materials [[buffer(2)]],
+                                              texture2d_array<float> lightmaps       [[texture(127)]],
+                                              sampler textureSampler                 [[sampler(0)]],
+                                              constant WorldUniforms &uniforms       [[buffer(1)]],
+                                              instance_acceleration_structure tlas   [[buffer(3)]])
 {
-    uint texIdx = clamp(uint(in.color.r + 0.5f), 0u, 95u);
-    uint lmIdx  = clamp(uint(in.color.g + 0.5f), 0u, 31u);
+    uint texIdx = clamp(uint(in.color.r + 0.5f), 0u, 1023u);
+    uint lmIdx  = uint(in.color.g + 0.5f);
     
-    float4 texColor = diffuseTextures[texIdx].sample(textureSampler, in.texCoord);
-    float4 lmColor  = lightmapTextures[lmIdx].sample(textureSampler, in.lightmapCoord);
+    float4 texColor  = materials.diffuseTextures[texIdx].sample(textureSampler, in.texCoord);
+    float4 lmColor   = lightmaps.sample(textureSampler, in.lightmapCoord, lmIdx);
+    float4 glowColor = materials.glowTextures[texIdx].sample(textureSampler, in.texCoord);
     
     float4 color;
-    color.rgb = texColor.rgb * lmColor.rgb * 2.0f;
+    color.rgb = (texColor.rgb * lmColor.rgb * 2.0f) + glowColor.rgb;
     color.a   = 1.0f;
     
     // Hardware ray-traced visibility rays for dynamic lights (dlights)
@@ -79,26 +86,32 @@ fragment float4 world_static_rt_fragment_main(
             float3 toLight = lpos - in.worldPos;
             
             float distSq = dot(toLight, toLight);
-            if (distSq >= radius * radius || distSq < 1e-6f)
+            if (radius <= 0.0f || distSq >= radius * radius || distSq < 0.01f)
                 continue;
             
-            float dist = sqrt(distSq);
+            float dist = sqrt(max(distSq, 0.01f));
             float3 L = toLight / dist;
             float NdotL = max(dot(N, L), 0.0f);
             if (NdotL <= 0.0f)
                 continue;
             
+            // Отсекаем затухающий свет до запуска аппаратного луча RT
+            float atten = (1.0f - dist / radius) * NdotL;
+            if (atten <= 0.005f)
+                continue;
+            
             // --- Hardware Shadow Ray ---
-            float3 rayOrigin = in.worldPos + N * 0.5f;
+            // Увеличенный нормальный оффсет и min_distance устраняют самозатенение (shadow acne) на BSP-полигонах
+            float3 rayOrigin = in.worldPos + N * 0.75f;
             float3 rayToLight = lpos - rayOrigin;
             float rayDist = length(rayToLight);
             
-            if (rayDist >= 0.6f) {
+            if (rayDist >= 0.8f) {
                 ray shadowRay;
                 shadowRay.origin = rayOrigin;
                 shadowRay.direction = rayToLight / rayDist;
-                shadowRay.min_distance = 0.1f;
-                shadowRay.max_distance = max(rayDist - 0.5f, 0.15f);
+                shadowRay.min_distance = 0.25f;
+                shadowRay.max_distance = max(rayDist - 0.5f, 0.25f);
                 
                 intersector<instancing> inter;
                 inter.assume_geometry_type(geometry_type::triangle);
@@ -112,7 +125,6 @@ fragment float4 world_static_rt_fragment_main(
                 }
             }
             
-            float atten = (1.0f - dist / radius) * NdotL;
             dynLight += uniforms.dlights[i].rgbPad.xyz * atten;
         }
         color.rgb += texColor.rgb * dynLight * 2.0f;
@@ -141,7 +153,7 @@ fragment float4 world_rt_fragment_main(
                                        texture2d<float> emissionTexture [[texture(TextureIndexEmission)]],
                                        sampler textureSampler [[sampler(0)]],
                                        constant WorldUniforms& uniforms [[buffer(1)]],
-                                       instance_acceleration_structure tlas [[buffer(2)]])
+                                       instance_acceleration_structure tlas [[buffer(3)]])
 {
     float4 color = uniforms.useLightmap ? float4(1.0f) : in.color;
     float2 uv = in.texCoord;
@@ -173,25 +185,30 @@ fragment float4 world_rt_fragment_main(
         float3 toLight = uniforms.dlights[i].posRadius.xyz - in.worldPos;
         float distSq = dot(toLight, toLight);
         
-        if (distSq >= radius * radius || distSq < 1e-6f)
+        if (radius <= 0.0f || distSq >= radius * radius || distSq < 0.01f)
             continue;
         
-        float dist = sqrt(distSq);
+        float dist = sqrt(max(distSq, 0.01f));
         float3 L = toLight / dist;
         float NdotL = max(dot(geomN, L), 0.0f);
         if (NdotL <= 0.0f)
             continue;
         
-        float3 rayOrigin = in.worldPos + geomN * 0.5f;
+        // Отсекаем затухающий свет до запуска аппаратного луча RT
+        float atten = (1.0f - dist / radius) * NdotL;
+        if (atten <= 0.005f)
+            continue;
+        
+        float3 rayOrigin = in.worldPos + geomN * 0.75f;
         float3 rayToLight = uniforms.dlights[i].posRadius.xyz - rayOrigin;
         float rayDist = length(rayToLight);
         
-        if (rayDist >= 0.6f) {
+        if (rayDist >= 0.8f) {
             ray shadowRay;
             shadowRay.origin = rayOrigin;
             shadowRay.direction = rayToLight / rayDist;
-            shadowRay.min_distance = 0.1f;
-            shadowRay.max_distance = max(rayDist - 0.5f, 0.15f);
+            shadowRay.min_distance = 0.25f;
+            shadowRay.max_distance = max(rayDist - 0.5f, 0.25f);
             
             intersector<instancing> inter;
             inter.assume_geometry_type(geometry_type::triangle);
@@ -203,7 +220,6 @@ fragment float4 world_rt_fragment_main(
                 continue;
         }
         
-        float atten = (1.0f - dist / radius) * NdotL;
         directLight += uniforms.dlights[i].rgbPad.xyz * atten;
     }
     

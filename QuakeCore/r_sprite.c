@@ -27,14 +27,33 @@
 
 // Sprite batching queue for accumulating quads prior to submission
 #define MAX_QUEUED_SPRITES 512
+#define MAX_SPRITE_TEXTURES 16
 
-typedef struct {
-    void            *tex;
-    MetalWorldVertex verts[6];
-} queued_sprite_t;
+static MetalWorldVertex s_spriteQueueVerts[MAX_QUEUED_SPRITES * 6];
+static int             s_numQueuedSpriteVerts = 0;
 
-static queued_sprite_t s_spriteQueue[MAX_QUEUED_SPRITES];
-static int             s_numQueuedSprites = 0;
+static void           *s_registeredSpriteTextures[MAX_SPRITE_TEXTURES];
+static uint32_t        s_numRegisteredSpriteTextures = 0;
+
+static uint32_t R_Sprite_RegisterTexture(void *texHandle)
+{
+    if (!texHandle)
+        return 0;
+    
+    for (uint32_t i = 0; i < s_numRegisteredSpriteTextures; i++) {
+        if (s_registeredSpriteTextures[i] == texHandle)
+            return i;
+    }
+    
+    // Если 16 слотов исчерпаны — сбрасываем текущий батч
+    if (s_numRegisteredSpriteTextures >= MAX_SPRITE_TEXTURES) {
+        R_Sprite_Flush();
+    }
+    
+    uint32_t slot = s_numRegisteredSpriteTextures++;
+    s_registeredSpriteTextures[slot] = texHandle;
+    return slot;
+}
 
 /*
  ================
@@ -241,60 +260,40 @@ void R_DrawSpriteModel (entity_t *e)
         return;
     }
     
-    // Enqueue standard billboard sprites for batching
-    if (s_numQueuedSprites < MAX_QUEUED_SPRITES)
-    {
-        queued_sprite_t *q = &s_spriteQueue[s_numQueuedSprites++];
-        q->tex = texHandle;
-        memcpy(q->verts, verts, sizeof(verts));
-    }
-    else
-    {
-        // Flush queue on buffer saturation
+    // Проверяем заполнение очереди вершин
+    if (s_numQueuedSpriteVerts + 6 > MAX_QUEUED_SPRITES * 6) {
         R_Sprite_Flush();
-        queued_sprite_t *q = &s_spriteQueue[s_numQueuedSprites++];
-        q->tex = texHandle;
-        memcpy(q->verts, verts, sizeof(verts));
     }
+    
+    // Регистрируем текстуру в текущем батче и записываем индекс слота в lightmapCoord.x
+    float slotIdx = (float)R_Sprite_RegisterTexture(texHandle);
+    for (int v = 0; v < 6; v++) {
+        verts[v].lightmapCoord.x = slotIdx;
+    }
+    
+    memcpy(&s_spriteQueueVerts[s_numQueuedSpriteVerts], verts, sizeof(verts));
+    s_numQueuedSpriteVerts += 6;
 }
 
 /*
  ================
- R_Sprite_Flush -- Group quads by texture and submit batched draws to Metal
+ R_Sprite_Flush -- Submit all queued billboard sprites in a single draw call
  ================
  */
 void R_Sprite_Flush (void)
 {
-    if (s_numQueuedSprites == 0)
+    if (s_numQueuedSpriteVerts == 0 || s_numRegisteredSpriteTextures == 0) {
+        s_numQueuedSpriteVerts = 0;
+        s_numRegisteredSpriteTextures = 0;
         return;
-    
-    extern simd_float4x4 g_metalWorldMVP;
-    static MetalWorldVertex s_batchVerts[MAX_QUEUED_SPRITES * 6];
-    
-    // Group quads by unique texture to minimize draw calls
-    for (int i = 0; i < s_numQueuedSprites; i++)
-    {
-        void *curTex = s_spriteQueue[i].tex;
-        if (!curTex)
-            continue; // Quad was already processed in a previous pass
-        
-        uint32_t batchVertCount = 0;
-        for (int j = i; j < s_numQueuedSprites; j++)
-        {
-            if (s_spriteQueue[j].tex == curTex)
-            {
-                memcpy(&s_batchVerts[batchVertCount], s_spriteQueue[j].verts, sizeof(s_spriteQueue[j].verts));
-                batchVertCount += 6;
-                s_spriteQueue[j].tex = NULL; // Mark as consumed
-            }
-        }
-        
-        if (batchVertCount > 0)
-        {
-            R_Metal_Draw3DPolygons(s_batchVerts, batchVertCount, g_metalWorldMVP,
-                                   curTex, NULL, METAL_BLEND_ALPHA, false, "sprite-batch");
-        }
     }
     
-    s_numQueuedSprites = 0;
+    extern simd_float4x4 g_metalWorldMVP;
+    
+    R_Metal_DrawSpriteBatch(s_spriteQueueVerts, (uint32_t)s_numQueuedSpriteVerts,
+                            g_metalWorldMVP,
+                            s_registeredSpriteTextures, s_numRegisteredSpriteTextures);
+    
+    s_numQueuedSpriteVerts = 0;
+    s_numRegisteredSpriteTextures = 0;
 }

@@ -469,18 +469,16 @@ typedef struct qmodel_s
     int			bspversion;
     qboolean	haslitwater;
     //
-    // alias model -- [Metal 3: OpenGL VBO handles deprecated]
+    // alias model -- [Metal 3 GPU Mesh Handle]
     //
-    GLuint        meshvbo;
-    GLuint        meshindexesvbo;
-    int            vboindexofs;
-    int            vboxyzofs;
-    int            vbostofs;
+    void          *metalMesh;
+    int            numindexes;
+    int            numverts_vbo;
     
     //
     // additional model data
     //
-    cache_user_t	cache;		// only access through Mod_Extradata
+    cache_user_t    cache;        // only access through Mod_Extradata
     
 } qmodel_t;
 

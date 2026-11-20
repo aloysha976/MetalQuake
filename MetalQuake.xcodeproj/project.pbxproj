@@ -759,7 +759,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "/opt/homebrew/lib/**";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9;
+				MARKETING_VERSION = 0.9.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					GameKit,
@@ -820,7 +820,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "/opt/homebrew/lib/**";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9;
+				MARKETING_VERSION = 0.9.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					GameKit,

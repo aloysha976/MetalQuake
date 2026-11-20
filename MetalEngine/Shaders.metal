@@ -46,7 +46,15 @@ fragment float4 ui_fragment_main(VertexOut in [[stage_in]],
 {
     uint texIndex = clamp(uint(in.lightmapCoords.x + 0.5), 0u, 15u);
     float4 texColor = uiTextures[texIndex].sample(textureSampler, in.texCoords);
-    return texColor * in.color;
+    float4 finalColor = texColor * in.color;
+    
+    // В ExtendedLinearSRGB нелинейный цвет текстуры UI создает белую вуаль и дымку.
+    // Приводим sRGB к линейному пространству перед блендингом.
+    if (uniforms.isEDR) {
+        finalColor.rgb = pow(clamp(finalColor.rgb, 0.0, 1.0), float3(2.2));
+    }
+    
+    return finalColor;
 }
 
 // =======================================================
@@ -84,6 +92,7 @@ struct WorldUniforms {
     int pbrEnabled;           // 1 = PBR enabled, 0 = legacy pipeline
     int pbrDebug;             // 0 = disabled, 1 = tangents, 2 = normals, 3 = bitangents
     int useGlow;              // 1 = sample glow/fullbright mask from slot 1
+    float4 liquidAlphas;      // x = water, y = lava, z = slime, w = teleporter
     GpuDlight dlights[MQ_GPU_DLIGHTS];
 };
 
@@ -130,6 +139,12 @@ vertex WorldVertexOut world_vertex_main(
     return out;
 }
 
+// Выделенный шейдер для теней моделей: сохраняет rgb = 0 и использует переданную альфу
+fragment float4 shadow_fragment_main(WorldVertexOut in [[stage_in]])
+{
+    return in.color;
+}
+
 fragment float4 world_fragment_main(
                                     WorldVertexOut in [[stage_in]],
                                     texture2d<float> baseTexture [[texture(TextureIndexBase)]],
@@ -155,9 +170,9 @@ fragment float4 world_fragment_main(
         return float4(normalize(B) * 0.5 + 0.5, 1.0);
     }
     
-    // Prevent magenta tinting: lightmapped world geometry packs material indices into in.color
-    // (texIdx in red, lmIdx in green). Reset base color to 1.0 to avoid modulating pixels by indices.
-    float4 color = uniforms.useLightmap ? float4(1.0f) : in.color;
+    // В VBO статического мира в in.color всегда упакованы индексы (texIdx в R, lmIdx в G).
+    // Для геометрии мира (и в base, и в glow проходах) цвет обязан быть нейтральным (1.0).
+    float4 color = (uniforms.useLightmap || uniforms.useGlow) ? float4(1.0f) : float4(1.0f, 1.0f, 1.0f, in.color.a);
     float2 uv = in.texCoord;
     
     // 1. Turbulent liquid distortion (matches QuakeSpasm/vkQuake WARPCALC approximation)
@@ -248,11 +263,11 @@ fragment float4 world_fragment_main(
                     float3 dY = dfdy(in.worldPos);
                     N = normalize(cross(dX, dY));
                 }
-                
-                float3 toCam = uniforms.cameraOriginPad.xyz - in.worldPos;
-                if (dot(N, toCam) < 0.0) {
-                    N = -N;
-                }
+                // Инверсия нормали убрана для полной синхронизации со статическим миром
+                //                float3 toCam = uniforms.cameraOriginPad.xyz - in.worldPos;
+                //                if (dot(N, toCam) < 0.0) {
+                //                    N = -N;
+                //                }
                 
                 for (int i = 0; i < uniforms.numDlights; ++i) {
                     float radius = uniforms.dlights[i].posRadius.w;
@@ -264,7 +279,7 @@ fragment float4 world_fragment_main(
                         continue;
                     
                     float distSq = dot(toLight, toLight);
-                    if (distSq >= radius * radius || distSq < 1e-6)
+                    if (radius <= 0.0f || distSq >= radius * radius || distSq < 0.01f)
                         continue;
                     
                     // 2. Backface culling: skip lights behind the surface plane prior to normalization
@@ -273,10 +288,10 @@ fragment float4 world_fragment_main(
                         continue;
                     
                     // 3. Fast hardware reciprocal square root on Apple Silicon
-                    float invDist = rsqrt(distSq);
+                    float invDist = rsqrt(max(distSq, 0.01f));
                     float NdotL = NdotLightVec * invDist;
                     float dist = distSq * invDist;
-                    float f = (1.0 - dist / radius) * NdotL;
+                    float f = max((1.0 - dist / radius) * NdotL, 0.0f);
                     lm += uniforms.dlights[i].rgbPad.rgb * f;
                 }
             }
@@ -388,10 +403,17 @@ fragment float4 postprocess_fragment_main(
                                           constant GammaUniforms& uniforms [[buffer(1)]])
 {
     float3 c = sceneTexture.sample(textureSampler, in.uv).rgb;
+    if (any(isnan(c)) || any(isinf(c))) {
+        c = float3(0.0f);
+    }
+    c = clamp(c, 0.0f, 65504.0f);
     
     // Bloom is accumulated prior to tonemapping in linear radiance space
     if (uniforms.hasBloom > 0.5) {
-        c += bloomTexture.sample(textureSampler, in.uv).rgb * uniforms.bloomIntensity;
+        float3 b = bloomTexture.sample(textureSampler, in.uv).rgb;
+        if (!any(isnan(b)) && !any(isinf(b))) {
+            c += clamp(b, 0.0f, 65504.0f) * uniforms.bloomIntensity;
+        }
     }
     
     // Apply exposure compensation before the non-linear filmic curve
@@ -415,14 +437,16 @@ fragment float4 postprocess_fragment_main(
     base = pow(base, float3(uniforms.gammaValue));
     base = clamp(base, 0.0, 1.0);
     
-    float excess = smoothstep(0.8, 2.0, lum) * uniforms.edrBoost * (W - 1.0);
-    float3 edr = base * (1.0 + excess);
+    // MQ_AcesFilmic выдает нелинейное значение (sRGB baseline).
+    // Так как буфер ExtendedLinearSRGB ожидает физические линейные значения,
+    // разжимаем базовый цвет обратно в линейный (SDR reference 1.0 = 100-200 нит):
+    float3 linearBase = pow(base, float3(2.2));
     
-    // Manual gamma encoding for extendedLinearSRGB render targets to match SDR baseline
-    // while allowing values above 1.0 to preserve linear highlight headroom
-    edr = min(pow(edr, float3(2.2)), float3(W));
+    // Экспансия хайлайтов в EDR-диапазон (выше 1.0 вплоть до Headroom W)
+    float excess = smoothstep(0.7, 1.8, lum) * uniforms.edrBoost * (W - 1.0);
+    float3 edr = linearBase + linearBase * excess;
     
-    return float4(edr, 1.0);
+    return float4(min(edr, float3(W)), 1.0);
 }
 
 // ======================================================================
@@ -436,6 +460,13 @@ fragment float4 brightpass_fragment_main(
                                          constant BloomBrightUniforms& uniforms [[buffer(1)]])
 {
     float3 c = sceneTexture.sample(textureSampler, in.uv).rgb;
+    
+    // Отсекаем NaN и перегруженные вспышки до попадания в буфер блума
+    if (any(isnan(c)) || any(isinf(c))) {
+        return float4(0.0f);
+    }
+    c = clamp(c, 0.0f, 65504.0f);
+    
     float lum = max(c.r, max(c.g, c.b));
     
     // Soft knee threshold: smooth ramp from (threshold - knee) to (threshold + knee)
@@ -526,6 +557,182 @@ fragment float2 motion_fragment_main(
     return prevPx - curPx;
 }
 
+// =========================================================================
+// ALIAS MODEL GPU LERP PIPELINE (Metal 3)
+// =========================================================================
+
+struct MetalAliasVertexIn {
+    float2 texCoord;
+};
+
+struct MetalAliasQuantizedVertexIn {
+    uchar pos_x;
+    uchar pos_y;
+    uchar pos_z;
+    uchar lightNormalIndex;
+};
+
+struct MetalAliasInstanceDataIn {
+    float4x4 mvpMatrix;
+    float4   scaleOrigin;      // xyz = scale_origin, w = unused
+    float4   modelScale;       // xyz = scale, w = lerpBlend
+    float4   lightColorAlpha;  // xyz = lightcolor, w = entalpha
+    float4   shadeVector;      // xyz = normalized light vector, w = unused
+    uint     poseA_offset;     // vertex offset for pose 1
+    uint     poseB_offset;     // vertex offset for pose 2
+    int      shading;          // 1 = apply directional shading, 0 = unlit/flat
+    uint     _pad;
+};
+
+struct MetalAliasBatchUniformsIn {
+    float4   fogColorDensity;  // xyz = fog color, w = density (0 = disabled)
+    int      useGlow;          // 1 = sample glow/fullbright mask from slot 1
+    int      _pad[3];
+};
+
+struct AliasFragmentIn {
+    float4 position [[position]];
+    float2 texCoord;
+    float4 color;
+    float  fogDistance;
+};
+
+// Quake 162 pre-calculated vertex normal vectors (anorms.h)
+constant float3 kAnorms[162] = {
+    float3(-0.525731, 0.000000, 0.850651), float3(-0.442863, 0.284250, 0.850651),
+    float3(-0.295242, 0.435889, 0.850651), float3(-0.112469, 0.514042, 0.850651),
+    float3(0.112469, 0.514042, 0.850651), float3(0.295242, 0.435889, 0.850651),
+    float3(0.442863, 0.284250, 0.850651), float3(0.525731, 0.000000, 0.850651),
+    float3(0.442863, -0.284250, 0.850651), float3(0.295242, -0.435889, 0.850651),
+    float3(0.112469, -0.514042, 0.850651), float3(-0.112469, -0.514042, 0.850651),
+    float3(-0.295242, -0.435889, 0.850651), float3(-0.442863, -0.284250, 0.850651),
+    float3(-0.850651, 0.000000, 0.525731), float3(-0.716126, 0.459701, 0.525731),
+    float3(-0.477457, 0.704948, 0.525731), float3(-0.181985, 0.830932, 0.525731),
+    float3(0.181985, 0.830932, 0.525731), float3(0.477457, 0.704948, 0.525731),
+    float3(0.716126, 0.459701, 0.525731), float3(0.850651, 0.000000, 0.525731),
+    float3(0.716126, -0.459701, 0.525731), float3(0.477457, -0.704948, 0.525731),
+    float3(0.181985, -0.830932, 0.525731), float3(-0.181985, -0.830932, 0.525731),
+    float3(-0.477457, -0.704948, 0.525731), float3(-0.716126, -0.459701, 0.525731),
+    float3(-0.951056, 0.000000, 0.309017), float3(-0.800907, 0.514042, 0.309017),
+    float3(-0.533962, 0.788411, 0.309017), float3(-0.203527, 0.929285, 0.309017),
+    float3(0.203527, 0.929285, 0.309017), float3(0.533962, 0.788411, 0.309017),
+    float3(0.800907, 0.514042, 0.309017), float3(0.951056, 0.000000, 0.309017),
+    float3(0.800907, -0.514042, 0.309017), float3(0.533962, -0.788411, 0.309017),
+    float3(0.203527, -0.929285, 0.309017), float3(-0.203527, -0.929285, 0.309017),
+    float3(-0.533962, -0.788411, 0.309017), float3(-0.800907, -0.514042, 0.309017),
+    float3(-1.000000, 0.000000, 0.000000), float3(-0.842157, 0.540498, 0.000000),
+    float3(-0.561479, 0.829029, 0.000000), float3(-0.214019, 0.977112, 0.000000),
+    float3(0.214019, 0.977112, 0.000000), float3(0.561479, 0.829029, 0.000000),
+    float3(0.842157, 0.540498, 0.000000), float3(1.000000, 0.000000, 0.000000),
+    float3(0.842157, -0.540498, 0.000000), float3(0.561479, -0.829029, 0.000000),
+    float3(0.214019, -0.977112, 0.000000), float3(-0.214019, -0.977112, 0.000000),
+    float3(-0.561479, -0.829029, 0.000000), float3(-0.842157, -0.540498, 0.000000),
+    float3(-0.951056, 0.000000, -0.309017), float3(-0.800907, 0.514042, -0.309017),
+    float3(-0.533962, 0.788411, -0.309017), float3(-0.203527, 0.929285, -0.309017),
+    float3(0.203527, 0.929285, -0.309017), float3(0.533962, 0.788411, -0.309017),
+    float3(0.800907, 0.514042, -0.309017), float3(0.951056, 0.000000, -0.309017),
+    float3(0.800907, -0.514042, -0.309017), float3(0.533962, -0.788411, -0.309017),
+    float3(0.203527, -0.929285, -0.309017), float3(-0.203527, -0.929285, -0.309017),
+    float3(-0.533962, -0.788411, -0.309017), float3(-0.800907, -0.514042, -0.309017),
+    float3(-0.850651, 0.000000, -0.525731), float3(-0.716126, 0.459701, -0.525731),
+    float3(-0.477457, 0.704948, -0.525731), float3(-0.181985, 0.830932, -0.525731),
+    float3(0.181985, 0.830932, -0.525731), float3(0.477457, 0.704948, -0.525731),
+    float3(0.716126, 0.459701, -0.525731), float3(0.850651, 0.000000, -0.525731),
+    float3(0.716126, -0.459701, -0.525731), float3(0.477457, -0.704948, -0.525731),
+    float3(0.181985, -0.830932, -0.525731), float3(-0.181985, -0.830932, -0.525731),
+    float3(-0.477457, -0.704948, -0.525731), float3(-0.716126, -0.459701, -0.525731),
+    float3(-0.525731, 0.000000, -0.850651), float3(-0.442863, 0.284250, -0.850651),
+    float3(-0.295242, 0.435889, -0.850651), float3(-0.112469, 0.514042, -0.850651),
+    float3(0.112469, 0.514042, -0.850651), float3(0.295242, 0.435889, -0.850651),
+    float3(0.442863, 0.284250, -0.850651), float3(0.525731, 0.000000, -0.850651),
+    float3(0.442863, -0.284250, -0.850651), float3(0.295242, -0.435889, -0.850651),
+    float3(0.112469, -0.514042, -0.850651), float3(-0.112469, -0.514042, -0.850651),
+    float3(-0.295242, -0.435889, -0.850651), float3(-0.442863, -0.284250, -0.850651),
+    float3(0.000000, 0.000000, 1.000000), float3(0.000000, 0.000000, -1.000000),
+    float3(0.000000, 1.000000, 0.000000), float3(0.000000, -1.000000, 0.000000),
+    float3(1.000000, 0.000000, 0.000000), float3(-1.000000, 0.000000, 0.000000)
+};
+
+vertex AliasFragmentIn alias_gpu_vertex_main(
+                                             uint vid [[vertex_id]],
+                                             uint iid [[instance_id]],
+                                             constant MetalAliasVertexIn          *uvBuffer      [[buffer(0)]],
+                                             constant MetalAliasQuantizedVertexIn *poses         [[buffer(1)]],
+                                             constant MetalAliasInstanceDataIn    *instances     [[buffer(2)]],
+                                             constant MetalAliasBatchUniformsIn   &batchUniforms [[buffer(3)]])
+{
+    AliasFragmentIn out;
+    constant MetalAliasInstanceDataIn &inst = instances[iid];
+    
+    uint idxA = inst.poseA_offset + vid;
+    uint idxB = inst.poseB_offset + vid;
+    
+    // 1. Unpack quantized coordinates (0..255) from strictly 4-byte struct
+    float3 pA = float3(poses[idxA].pos_x, poses[idxA].pos_y, poses[idxA].pos_z);
+    float3 pB = float3(poses[idxB].pos_x, poses[idxB].pos_y, poses[idxB].pos_z);
+    
+    // 2. Vertex position lerping directly in Quake mesh units (0..255)
+    float blend = inst.modelScale.w; // lerpBlend stored in w
+    float3 localPos = mix(pA, pB, blend);
+    
+    // Note: mvpMatrix generated by R_Metal_ComputeEntityMVP already embeds scale and scale_origin!
+    out.position = inst.mvpMatrix * float4(localPos, 1.0);
+    out.fogDistance = max(out.position.w, 0.0);
+    out.texCoord = uvBuffer[vid].texCoord;
+    
+    // 3. Shading calculation (1:1 vkQuake / QuakeSpasm)
+    if (inst.shading) {
+        // Если shadeVector направлен строго вверх (признак viewmodel), отключаем направленный срез нормалей
+        if (inst.shadeVector.z > 0.99 && abs(inst.shadeVector.x) < 0.01 && abs(inst.shadeVector.y) < 0.01) {
+            // Для оружия: чистый равномерный свет комнаты с овербрайтом
+            out.color = float4(inst.lightColorAlpha.xyz * 2.0, inst.lightColorAlpha.w);
+        } else {
+            uint normIdxA = min(uint(poses[idxA].lightNormalIndex), 161u);
+            uint normIdxB = min(uint(poses[idxB].lightNormalIndex), 161u);
+            float3 normA = kAnorms[normIdxA];
+            float3 normB = kAnorms[normIdxB];
+            float3 normal = normalize(mix(normA, normB, blend));
+            
+            float dotVal = max(dot(normal, inst.shadeVector.xyz), 0.0);
+            float lightFactor = 0.40 + 0.60 * dotVal;
+            
+            float3 lit = inst.lightColorAlpha.xyz * lightFactor * 2.0;
+            out.color = float4(lit, inst.lightColorAlpha.w);
+        }
+    } else {
+        out.color = float4(inst.lightColorAlpha.xyz * 2.0, inst.lightColorAlpha.w);
+    }
+    
+    return out;
+}
+
+fragment float4 alias_gpu_fragment_main(
+                                        AliasFragmentIn in                        [[stage_in]],
+                                        texture2d<float> diffuseTex              [[texture(0)]],
+                                        texture2d<float> glowTex                 [[texture(1)]],
+                                        sampler          texSampler              [[sampler(0)]],
+                                        constant MetalAliasBatchUniformsIn &batch [[buffer(3)]])
+{
+    float4 texColor = diffuseTex.sample(texSampler, in.texCoord);
+    float4 color = texColor * in.color;
+    
+    // Additive fullbright / glow mask support
+    if (batch.useGlow) {
+        float4 glow = glowTex.sample(texSampler, in.texCoord);
+        color.rgb += glow.rgb;
+    }
+    
+    // Volumetric exponential fog (идентично world_static и QuakeSpasm gl_fog.c)
+    if (batch.fogColorDensity.w > 0.0f) {
+        float dist = in.fogDistance;
+        float density = batch.fogColorDensity.w;
+        float fogFactor = exp2(-density * density * dist * dist * 1.4426950408889634f);
+        color.rgb = mix(batch.fogColorDensity.xyz, color.rgb, clamp(fogFactor, 0.0f, 1.0f));
+    }
+    
+    return color;
+}
+
 // =======================================================
 // ALIAS MODELS SHADER (Monsters & Weapons - Pure & Isolated)
 // =======================================================
@@ -559,6 +766,32 @@ fragment float4 alias_fragment_main(
     }
     
     return color;
+}
+
+// =======================================================
+// SPRITE BATCH SHADERS (Multi-Texture Single Batch)
+// =======================================================
+
+fragment float4 sprite_fragment_main(
+                                     WorldVertexOut in [[stage_in]],
+                                     array<texture2d<float>, 16> spriteTextures [[texture(0)]],
+                                     sampler textureSampler                     [[sampler(0)]],
+                                     constant WorldUniforms &uniforms           [[buffer(1)]])
+{
+    uint texIdx = min(uint(in.lightmapCoord.x + 0.5f), 15u);
+    float4 texColor = spriteTextures[texIdx].sample(textureSampler, in.texCoord);
+    
+    // Quake overbright scale (x2.0) синхронизирует спрайты с миром (world_static) и моделями (alias_gpu)
+    float3 rgb = texColor.rgb * in.color.rgb * 2.0f;
+    float alpha = texColor.a * in.color.a;
+    
+    // Объемный экспоненциальный туман (вычисляется без ветвлений через fma / exp2)
+    float density = uniforms.fogColorDensity.w;
+    float dist = in.fogDistance;
+    float fogFactor = clamp(exp2(-density * density * dist * dist * 1.442695f), 0.0f, 1.0f);
+    rgb = mix(uniforms.fogColorDensity.xyz, rgb, fogFactor);
+    
+    return float4(rgb, alpha);
 }
 
 // =======================================================
@@ -626,23 +859,27 @@ fragment float4 particle_fragment_main(
 }
 
 // =======================================================
-// STATIC BSP WORLD BINDLESS SHADER (Single Batch)
+// STATIC BSP WORLD BINDLESS SHADER (Single Batch via Argument Buffer)
 // =======================================================
+
+struct WorldMaterialTable {
+    array<texture2d<float>, 1024> diffuseTextures [[id(0)]];
+    array<texture2d<float>, 1024> glowTextures    [[id(1024)]];
+};
 
 fragment float4 world_static_fragment_main(
                                            WorldVertexOut in [[stage_in]],
-                                           array<texture2d<float>, 96> diffuseTextures  [[texture(0)]],
-                                           array<texture2d<float>, 32> lightmapTextures [[texture(96)]],
-                                           sampler textureSampler [[sampler(0)]],
-                                           constant WorldUniforms &uniforms [[buffer(1)]])
+                                           constant WorldMaterialTable &materials [[buffer(2)]],
+                                           texture2d_array<float> lightmaps       [[texture(127)]],
+                                           sampler textureSampler                 [[sampler(0)]],
+                                           constant WorldUniforms &uniforms       [[buffer(1)]])
 {
-    uint texIdx = clamp(uint(in.color.r + 0.5f), 0u, 95u);
-    uint lmIdx  = clamp(uint(in.color.g + 0.5f), 0u, 31u);
+    uint texIdx = clamp(uint(in.color.r + 0.5f), 0u, 1023u);
+    uint lmIdx  = uint(in.color.g + 0.5f);
     
-    float4 texColor = diffuseTextures[texIdx].sample(textureSampler, in.texCoord);
-    float4 lmColor  = lightmapTextures[lmIdx].sample(textureSampler, in.lightmapCoord);
+    float4 texColor  = materials.diffuseTextures[texIdx].sample(textureSampler, in.texCoord);
+    float4 lmColor   = lightmaps.sample(textureSampler, in.lightmapCoord, lmIdx);
     
-    // Classic Quake overbright lighting multiplier (* 2.0)
     float4 color;
     color.rgb = texColor.rgb * lmColor.rgb * 2.0f;
     color.a   = 1.0f;
@@ -658,13 +895,13 @@ fragment float4 world_static_fragment_main(
             float3 toLight = lpos - in.worldPos;
             
             float distSq = dot(toLight, toLight);
-            if (distSq >= radius * radius || distSq < 1e-6f)
+            if (radius <= 0.0f || distSq >= radius * radius || distSq < 0.01f)
                 continue;
             
-            float invDist = rsqrt(distSq);
+            float invDist = rsqrt(max(distSq, 0.01f));
             float NdotL = max(dot(N, toLight * invDist), 0.0f);
             float dist = distSq * invDist;
-            float atten = (1.0f - dist / radius) * NdotL;
+            float atten = max((1.0f - dist / radius) * NdotL, 0.0f);
             dynLight += uniforms.dlights[i].rgbPad.xyz * atten;
         }
         color.rgb += texColor.rgb * dynLight * 2.0f;
@@ -676,6 +913,71 @@ fragment float4 world_static_fragment_main(
         float fogFactor = exp2(-uniforms.fogColorDensity.w * uniforms.fogColorDensity.w *
                                dist * dist * 1.4426950408889634f);
         color.rgb = mix(uniforms.fogColorDensity.xyz, color.rgb, clamp(fogFactor, 0.0f, 1.0f));
+    }
+    
+    return color;
+}
+// =======================================================
+// TURBULENT LIQUIDS BINDLESS SHADER (Water, Lava, Slime, Teleport)
+// Single Batch via Argument Buffer
+// =======================================================
+
+fragment float4 world_turbulent_fragment_main(
+                                              WorldVertexOut in [[stage_in]],
+                                              constant WorldMaterialTable &materials      [[buffer(2)]],
+                                              texture2d_array<float> lightmaps             [[texture(127)]],
+                                              sampler textureSampler                       [[sampler(0)]],
+                                              constant WorldUniforms &uniforms             [[buffer(1)]])
+{
+    uint texIdx   = clamp(uint(in.color.r + 0.5f), 0u, 1023u);
+    uint lmIdx    = uint(in.color.g + 0.5f);
+    uint turbType = clamp(uint(in.color.b + 0.5f), 0u, 3u);
+    
+    // 1. Turbulent liquid distortion (Warp approximation)
+    float2 uv = in.texCoord;
+    float waveTime = uniforms.time * (128.0f / 3.14159265f);
+    float waveS = sin((uv.y * 128.0f * 2.0f + waveTime) * (3.14159265f / 128.0f)) * (8.0f / 128.0f);
+    float waveT = sin((uv.x * 128.0f * 2.0f + waveTime) * (3.14159265f / 128.0f)) * (8.0f / 128.0f);
+    uv += float2(waveS, waveT);
+    
+    // 2. Diffuse texture sampling from Argument Buffer table
+    float4 texColor = materials.diffuseTextures[texIdx].sample(textureSampler, uv);
+    
+    // 3. Lighting evaluation: standard water uses lightmaps, lava/teleports are self-illuminating
+    float3 litColor;
+    if (lmIdx < 255u) {
+        float4 lmColor = lightmaps.sample(textureSampler, in.lightmapCoord, lmIdx);
+        litColor = texColor.rgb * lmColor.rgb * 2.0f;
+    } else {
+        litColor = texColor.rgb;
+    }
+    
+    // 4. Resolve alpha channel based on turbType
+    // turbType: 0 = water (x), 1 = lava (y), 2 = slime (z), 3 = teleporter (w)
+    float alpha = uniforms.liquidAlphas[turbType];
+    
+    // Лава и слизь по канону Quake непрозрачны, если для них явно не задана прозрачность
+    if (turbType == 1u || turbType == 2u) {
+        if (alpha <= 0.01f || alpha >= 0.99f) {
+            alpha = 1.0f;
+        }
+    } else {
+        // Для воды и телепортов не даем альфе упасть ниже минимального порога видимости
+        if (alpha <= 0.01f) {
+            alpha = 1.0f;
+        }
+    }
+    
+    float4 color = float4(litColor, alpha);
+    
+    // 5. Volumetric exponential fog с защитой от резкого исчезновения
+    if (uniforms.fogColorDensity.w > 0.0f) {
+        float dist = in.fogDistance;
+        // Ограничиваем влияние плотности тумана, чтобы объект не растворялся моментально
+        float density = uniforms.fogColorDensity.w;
+        float fogFactor = exp2(-density * density * dist * dist * 1.4426950408889634f);
+        fogFactor = clamp(fogFactor, 0.0f, 1.0f);
+        color.rgb = mix(uniforms.fogColorDensity.xyz, color.rgb, fogFactor);
     }
     
     return color;

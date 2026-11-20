@@ -135,11 +135,12 @@ struct MetalQuakeApp: App {
     @Environment(\.openWindow) private var openWindow
     
     var body: some Scene {
-        WindowGroup(id: "launcher") {
+        Window("MetalQuake", id: "launcher") {
             MetalQuakeLauncher()
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 640, height: 650)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About MetalQuake") {

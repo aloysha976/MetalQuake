@@ -43,8 +43,7 @@ void R_Metal_GetAppTitle(char *outTitle, size_t maxLen)
     }
 }
 
-// Enforces layer geometry and engine projection updates during window resize.
-// Note: contentsScale is maintained exclusively by vid_macos.m.
+// Атомарный владелец геометрии: согласованно обновляет contentsScale, drawableSize и depth-текстуру.
 void R_Metal_HandleWindowResize(NSWindow *nswin)
 {
     if (!nswin || !g_metalLayer) return;
@@ -55,23 +54,52 @@ void R_Metal_HandleWindowResize(NSWindow *nswin)
     NSRect bounds = contentView.bounds;
     if (bounds.size.width <= 0 || bounds.size.height <= 0) return;
     
-    CGFloat scale = g_metalLayer.contentsScale > 0 ? g_metalLayer.contentsScale : 1.0;
-    CGSize pixelSize = CGSizeMake(bounds.size.width * scale, bounds.size.height * scale);
+    cvar_t *fsVar = Cvar_FindVar("vid_fullscreen");
+    bool isFS = (modestate == MS_FULLSCREEN) ||
+    (fsVar && fsVar->value != 0.0f) ||
+    (nswin.styleMask == NSWindowStyleMaskBorderless);
     
-    // 1. Resize views and CAMetalLayer to encompass the entire window bounds
+    CGFloat targetScale;
+    CGSize pixelSize;
+    
+    if (isFS) {
+        // В полноэкранном режиме целевой размер строго равен физическим пикселям матрицы
+        targetScale = g_metalLayer.contentsScale > 0 ? g_metalLayer.contentsScale : 1.0;
+        pixelSize = CGSizeMake(floor(bounds.size.width * targetScale),
+                               floor(bounds.size.height * targetScale));
+    } else {
+        // В оконном режиме источник правды — backingScaleFactor текущего монитора
+        NSScreen *scr = nswin.screen ?: [NSScreen mainScreen];
+        targetScale = (scr && scr.backingScaleFactor > 0) ? scr.backingScaleFactor : 1.0;
+        pixelSize = CGSizeMake(floor(bounds.size.width * targetScale),
+                               floor(bounds.size.height * targetScale));
+    }
+    
+    // Ранний выход: если геометрия, буферы и вьюпорт уже идентичны, не трогаем GPU-ресурсы
+    if (g_metalLayer.contentsScale == targetScale &&
+        CGSizeEqualToSize(g_metalLayer.drawableSize, pixelSize) &&
+        NSEqualRects(g_metalLayer.frame, bounds) &&
+        vid.width == (int)pixelSize.width &&
+        vid.height == (int)pixelSize.height) {
+        return;
+    }
+    
+    // 1. Атомарное обновление подвью и CAMetalLayer
     for (NSView *subview in contentView.subviews) {
-        subview.frame = bounds;
+        if (!NSEqualRects(subview.frame, bounds))
+            subview.frame = bounds;
     }
     g_metalLayer.frame = bounds;
+    g_metalLayer.contentsScale = targetScale;
     g_metalLayer.drawableSize = pixelSize;
     
-    // 2. Update Quake core viewport parameters
+    // 2. Обновление вьюпорта ядра Quake
     vid.width = (int)pixelSize.width;
     vid.height = (int)pixelSize.height;
     SCR_UpdateConwidth(vid.width, vid.height);
     vid.recalc_refdef = 1;
     
-    // 3. Reallocate depth attachment matching the new resolution
+    // 3. Выделение текстуры глубины под точный размер кадра
     R_Metal_UpdateDepthTexture((NSUInteger)pixelSize.width, (NSUInteger)pixelSize.height);
 }
 
@@ -94,7 +122,7 @@ void R_Metal_ConfigureNativeWindow(void *nativeWindowHandle, const char *title)
             // Fullscreen is managed via custom borderless/mode-switch logic in vid_macos.m.
             nswin.collectionBehavior = NSWindowCollectionBehaviorFullScreenNone;
             
-            // Register resize observers
+            // Регистрация наблюдателей изменения размера
             [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
                                                               object:nswin
                                                                queue:[NSOperationQueue mainQueue]
@@ -102,13 +130,11 @@ void R_Metal_ConfigureNativeWindow(void *nativeWindowHandle, const char *title)
                 R_Metal_HandleWindowResize(nswin);
             }];
             
-            // Screen configuration change observers.
-            // Adapt window bounds and backing scale first, then resize backing store and depth buffers.
+            // Наблюдатели переезда окна и смены свойств дисплея
             [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidChangeScreenNotification
                                                               object:nswin
                                                                queue:[NSOperationQueue mainQueue]
                                                           usingBlock:^(NSNotification *note) {
-                MLog(MQ_LVL_DEV, "VID", "NSWindowDidChangeScreenNotification fired");
                 VID_WindowDidChangeScreen();
                 R_Metal_HandleWindowResize(nswin);
             }];
@@ -117,7 +143,6 @@ void R_Metal_ConfigureNativeWindow(void *nativeWindowHandle, const char *title)
                                                               object:nswin
                                                                queue:[NSOperationQueue mainQueue]
                                                           usingBlock:^(NSNotification *note) {
-                MLog(MQ_LVL_DEV, "VID", "NSWindowDidChangeBackingPropertiesNotification fired");
                 VID_WindowDidChangeScreen();
                 R_Metal_HandleWindowResize(nswin);
             }];
@@ -126,23 +151,11 @@ void R_Metal_ConfigureNativeWindow(void *nativeWindowHandle, const char *title)
                                                               object:nil
                                                                queue:[NSOperationQueue mainQueue]
                                                           usingBlock:^(NSNotification *note) {
-                MLog(MQ_LVL_DEV, "VID", "NSApplicationDidChangeScreenParametersNotification fired");
                 VID_WindowDidChangeScreen();
                 R_Metal_HandleWindowResize(nswin);
             }];
             
-            // Mouse capture policy is managed in in_macos.m.
-            // Reset focus heal cooldown on resign key to re-engage recovery immediately.
-            [[NSNotificationCenter defaultCenter]
-             addObserverForName:NSWindowDidResignKeyNotification
-             object:nswin
-             queue:[NSOperationQueue mainQueue]
-             usingBlock:^(NSNotification *note) {
-                s_lastHealTime = 0;
-                MLog(MQ_LVL_DEV, "INPUT", "window did resign key -> focus-heal cooldown reset");
-            }];
-            
-            // Ensure mouse grab if application reactivates while the window is already key
+            // Захват курсора при реактивации
             [[NSNotificationCenter defaultCenter]
              addObserverForName:NSApplicationDidBecomeActiveNotification
              object:nil
@@ -154,17 +167,17 @@ void R_Metal_ConfigureNativeWindow(void *nativeWindowHandle, const char *title)
                 }
             }];
             
+            // Единый обработчик потери статуса Key Window
             [[NSNotificationCenter defaultCenter]
              addObserverForName:NSWindowDidResignKeyNotification
              object:nswin
              queue:[NSOperationQueue mainQueue]
              usingBlock:^(NSNotification *note) {
-                // Defer releasing cursor grab if the application remains active (e.g. transient alerts)
+                s_lastHealTime = 0;
                 if (NSApp.isActive) {
-                    MLog(MQ_LVL_DEV, "INPUT", "window resign key but app still active -> defer ungrab");
+                    MLog(MQ_LVL_DEV, "INPUT", "window resign key but app still active -> defer ungrab, heal reset");
                 } else {
                     IN_Deactivate(true);
-                    s_lastHealTime = 0;
                     MLog(MQ_LVL_DEV, "INPUT", "window did resign key (app inactive) -> mouse ungrab, heal reset");
                 }
             }];
@@ -211,13 +224,13 @@ void R_Metal_ActivateGameWindow(void)
             // Evaluate fullscreen state via engine flags and borderless mask
             cvar_t *fsVar = Cvar_FindVar("vid_fullscreen");
             bool isFS = (modestate == MS_FULLSCREEN) ||
-                        (fsVar && fsVar->value != 0.0f) ||
-                        (g_gameNSWindow.styleMask == NSWindowStyleMaskBorderless);
+            (fsVar && fsVar->value != 0.0f) ||
+            (g_gameNSWindow.styleMask == NSWindowStyleMaskBorderless);
             
             if (isFS) {
                 // Hide system Menu Bar and Dock; elevate window level above main menu
                 NSApp.presentationOptions = NSApplicationPresentationHideMenuBar |
-                                            NSApplicationPresentationHideDock;
+                NSApplicationPresentationHideDock;
                 g_gameNSWindow.level = NSMainMenuWindowLevel + 1;
             } else {
                 NSApp.presentationOptions = NSApplicationPresentationDefault;
@@ -262,8 +275,8 @@ void MQ_Window_FocusHealTick(void)
         // which may resolve asynchronously after the window is initially created.
         cvar_t *fsVar = Cvar_FindVar("vid_fullscreen");
         bool isFS = (modestate == MS_FULLSCREEN) ||
-                    (fsVar && fsVar->value != 0.0f) ||
-                    (g_gameNSWindow.styleMask == NSWindowStyleMaskBorderless);
+        (fsVar && fsVar->value != 0.0f) ||
+        (g_gameNSWindow.styleMask == NSWindowStyleMaskBorderless);
         if (isFS) {
             g_gameNSWindow.level = NSMainMenuWindowLevel + 1;
         }
@@ -313,4 +326,16 @@ void MQ_Input_DiagnosticsTick(void)
              g_gameNSWindow.isMiniaturized ? 1 : 0,
              g_gameNSWindow.isVisible ? 1 : 0);
     }
+}
+const char *MQ_GetBundleVersionString(void) {
+    static char versionBuf[64] = {0};
+    if (versionBuf[0] == '\0') {
+        NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        if (ver && ver.length > 0) {
+            snprintf(versionBuf, sizeof(versionBuf), "%s", [ver UTF8String]);
+        } else {
+            snprintf(versionBuf, sizeof(versionBuf), METALQUAKE_VER_STRING);
+        }
+    }
+    return versionBuf;
 }

@@ -545,14 +545,19 @@ static void R_InterpolateEntity (entity_t *e)
     vec3_t    delta;
     int    j;
     
-    if (!e->interp_valid || g_interpAlpha <= 0)
+    if (!e->interp_valid)
         return;
     
-    s = g_interpAlpha;
+    s = CLAMP (0.0f, g_interpAlpha, 1.0f);
     
     VectorSubtract (e->cur_origin, e->prev_origin, delta);
     if (DotProduct(delta,delta) > 100*100)
-        return; // Displacement exceeds threshold; treat as teleportation rather than locomotion
+    {
+        // Телепортация: мгновенно ставим в текущую позицию тика
+        VectorCopy (e->cur_origin, e->origin);
+        VectorCopy (e->cur_angles, e->angles);
+        return;
+    }
     
     VectorMA (e->prev_origin, s, delta, e->origin);
     
@@ -571,20 +576,19 @@ static void R_InterpolateEntity (entity_t *e)
  =============
  R_ApplyRenderInterpolation
  
- Invoked once per rendered frame prior to camera view setup and geometry dispatch.
- Interpolates player origin and orientation to stabilize camera movement.
+ MetalQuake: интерполирует ТОЛЬКО сущность игрока (камеру).
+ Монстры и снаряды используют штатный механизм lerp QuakeSpasm,
+ что исключает затирание координат и рывки моделей.
  =============
  */
 void R_ApplyRenderInterpolation (void)
 {
-    int    i;
-    
     if (!r_interpolate.value)
         return;
     
-    R_InterpolateEntity (&cl_entities[cl.viewentity]);
-    for (i=0 ; i<cl_numvisedicts ; i++)
-        R_InterpolateEntity (cl_visedicts[i]);
+    // Интерполируем только игрока для плавного движения камеры между тиками
+    if (cl.viewentity >= 0 && cl.viewentity < cl_max_edicts)
+        R_InterpolateEntity (&cl_entities[cl.viewentity]);
 }
 
 extern void R_DrawAliasEntitiesOnList (qboolean alphapass);
@@ -775,27 +779,6 @@ void R_RenderView (void)
     
     // Compute 3D MVP matrix following r_refdef setup
     float aspect = (vid.height > 0) ? ((float)vid.width / (float)vid.height) : 1.333f;
-    
-    // Intermission camera lock: suppresses discrete server tick jitter during scoreboard screens
-    static vec3_t s_intermission_locked_org;
-    static vec3_t s_intermission_locked_ang;
-    static qboolean s_intermission_was_active = false;
-    
-    if (cl.intermission)
-    {
-        if (!s_intermission_was_active)
-        {
-            VectorCopy (r_refdef.vieworg, s_intermission_locked_org);
-            VectorCopy (r_refdef.viewangles, s_intermission_locked_ang);
-            s_intermission_was_active = true;
-        }
-        VectorCopy (s_intermission_locked_org, r_refdef.vieworg);
-        VectorCopy (s_intermission_locked_ang, r_refdef.viewangles);
-    }
-    else
-    {
-        s_intermission_was_active = false;
-    }
     
     simd_float3 viewOrg = { r_refdef.vieworg[0], r_refdef.vieworg[1], r_refdef.vieworg[2] };
     simd_float3 viewAng = { r_refdef.viewangles[0], r_refdef.viewangles[1], r_refdef.viewangles[2] };

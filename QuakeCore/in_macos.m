@@ -83,8 +83,11 @@ static qboolean s_textMode = false;
 
 static volatile qboolean s_quitRequested = false;
 
-static int s_totalDX = 0;
-static int s_totalDY = 0;
+static int s_lookDX = 0;
+static int s_lookDY = 0;
+
+static int s_moveDX = 0;
+static int s_moveDY = 0;
 
 static double s_fracDX = 0.0;
 static double s_fracDY = 0.0;
@@ -155,20 +158,6 @@ static CGDirectDisplayID IN_DisplayIDForWindow(NSWindow *win)
     return CGMainDisplayID();
 }
 
-static CGFloat IN_MenuBarScreenHeight(void)
-{
-    NSArray<NSScreen *> *screens = [NSScreen screens];
-    
-    if (screens.count > 0)
-        return screens[0].frame.size.height;
-    
-    NSScreen *main = [NSScreen mainScreen];
-    if (main)
-        return main.frame.size.height;
-    
-    return CGDisplayBounds(CGMainDisplayID()).size.height;
-}
-
 static BOOL IN_QuartzCenterForWindow(NSWindow *win, CGPoint *out)
 {
     if (!win || !out)
@@ -186,13 +175,13 @@ static BOOL IN_QuartzCenterForWindow(NSWindow *win, CGPoint *out)
     if (screenRect.size.width < 1.0 || screenRect.size.height < 1.0)
         return NO;
     
-    // AppKit: origin внизу главного экрана, y вверх.
-    // Quartz: origin вверху главного экрана, y вниз.
-    // quartz_y = menuBarHeight - appkit_y
-    CGFloat menuBarHeight = IN_MenuBarScreenHeight();
+    // В мультимониторных конфигурациях macOS первичный дисплей (screens[0])
+    // всегда определяет нулевой уровень Quartz (0, 0 в левом верхнем углу).
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+    CGFloat primaryHeight = (screens.count > 0) ? screens[0].frame.size.height : 1080.0;
     
     out->x = NSMidX(screenRect);
-    out->y = menuBarHeight - NSMidY(screenRect);
+    out->y = primaryHeight - NSMidY(screenRect);
     
     return YES;
 }
@@ -306,8 +295,10 @@ static void IN_ClearLocalInputState(void)
 {
     IN_GC_ClearStates();
     
-    s_totalDX = 0;
-    s_totalDY = 0;
+    s_lookDX = 0;
+    s_lookDY = 0;
+    s_moveDX = 0;
+    s_moveDY = 0;
     s_fracDX = 0.0;
     s_fracDY = 0.0;
     s_wheelAccum = 0.0;
@@ -422,8 +413,15 @@ static void IN_UpdateMouseGrab(void)
         {
             CGDirectDisplayID currentDisplay = IN_DisplayIDForWindow(win);
             
-            if (!NSEqualRects(win.frame, s_lastGrabFrame))
+            // Исключаем микродрожание: сравниваем целочисленные границы
+            NSRect curF = win.frame;
+            if ((int)curF.origin.x != (int)s_lastGrabFrame.origin.x ||
+                (int)curF.origin.y != (int)s_lastGrabFrame.origin.y ||
+                (int)curF.size.width != (int)s_lastGrabFrame.size.width ||
+                (int)curF.size.height != (int)s_lastGrabFrame.size.height)
+            {
                 geometryChanged = true;
+            }
             
             if (currentDisplay != s_lastGrabDisplay)
                 geometryChanged = true;
@@ -585,11 +583,9 @@ static void IN_AddAppObservers(void)
     
     IN_AddObserver(s_appObservers, NSApplicationDidChangeScreenParametersNotification, nil, ^(NSNotification *note) {
         (void)note;
-        IN_LOG_FOCUS("screen parameters changed");
-        if (s_mouseGrabbed)
-            IN_SetMouseGrabbed(true, "screen parameters changed");
-        else
-            IN_UpdateMouseGrab();
+        // Не перезатягиваем мышь вслепую: IN_UpdateMouseGrab проверит
+        // реальное изменение окна (frame / displayID) и вызовет варп только при необходимости.
+        IN_UpdateMouseGrab();
     });
     
     IN_AddObserver(s_appObservers, NSApplicationWillTerminateNotification, nil, ^(NSNotification *note) {
@@ -792,8 +788,10 @@ void IN_MouseMotion(int dx, int dy)
     if (dy > 300) dy = 300;
     if (dy < -300) dy = -300;
     
-    s_totalDX += dx;
-    s_totalDY += dy;
+    s_lookDX += dx;
+    s_lookDY += dy;
+    s_moveDX += dx;
+    s_moveDY += dy;
 }
 
 //==========================================================================
@@ -810,29 +808,31 @@ void IN_JoyMove(usercmd_t *cmd)
     IN_GC_Move(cmd);
 }
 
-void IN_MouseMove(usercmd_t *cmd)
+/*
+ ================
+ IN_ApplyLook
+ 
+ MetalQuake: вызывается каждый кадр рендера (120+ Гц)
+ для мгновенного и идеально гладкого обновления cl.viewangles.
+ ================
+ */
+void IN_ApplyLook(void)
 {
     float dmx, dmy;
     
-    dmx = s_totalDX * sensitivity.value;
-    dmy = s_totalDY * sensitivity.value;
+    dmx = s_lookDX * sensitivity.value;
+    dmy = s_lookDY * sensitivity.value;
     
-    s_totalDX = 0;
-    s_totalDY = 0;
-    s_fracDX = 0.0;
-    s_fracDY = 0.0;
+    s_lookDX = 0;
+    s_lookDY = 0;
     
-    // паузу проверяем после сброса дельт, чтобы движение во время паузы не накапливалось
-    if (cl.paused || key_dest != key_game)
+    if (cl.paused || key_dest != key_game || s_noMouse || !s_windowKey)
         return;
     
-    if ((in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1)))
-    {
-        cmd->sidemove += m_side.value * dmx;
-    }
-    else
+    if (!((in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1))))
     {
         cl.viewangles[YAW] -= m_yaw.value * dmx;
+        cl.viewangles[YAW] = anglemod(cl.viewangles[YAW]);
     }
     
     // [FIX F1] freelook=1 даёт вертикальный обзор без зажатия +mlook
@@ -856,7 +856,35 @@ void IN_MouseMove(usercmd_t *cmd)
         if (cl.viewangles[PITCH] < min_p)
             cl.viewangles[PITCH] = min_p;
     }
-    else
+}
+
+/*
+ ================
+ IN_MouseMove
+ 
+ MetalQuake: вызывается только внутри тика симуляции (72 Гц)
+ для формирования cmd->sidemove и cmd->forwardmove.
+ ================
+ */
+void IN_MouseMove(usercmd_t *cmd)
+{
+    float dmx, dmy;
+    
+    dmx = s_moveDX * sensitivity.value;
+    dmy = s_moveDY * sensitivity.value;
+    
+    s_moveDX = 0;
+    s_moveDY = 0;
+    
+    if (cl.paused || key_dest != key_game)
+        return;
+    
+    if ((in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1)))
+    {
+        cmd->sidemove += m_side.value * dmx;
+    }
+    
+    if (!((in_mlook.state & 1) || freelook.value) || (in_strafe.state & 1))
     {
         if ((in_strafe.state & 1) && noclip_anglehack)
             cmd->upmove -= m_forward.value * dmy;
